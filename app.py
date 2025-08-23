@@ -1,8 +1,8 @@
 import streamlit as st
 import numpy as np
-import plotly.express as px
 from math import log, sqrt, exp
 from scipy.stats import norm
+import plotly.graph_objects as go
 
 # -------------------------
 # Black-Scholes Functions
@@ -24,7 +24,7 @@ st.title("Black-Scholes Pricing Model")
 # Sidebar for inputs
 st.sidebar.markdown("### Connect with me")
 st.sidebar.markdown(
-    "[📎 LinkedIn](https://www.linkedin.com/in/jonas-f-628179296?utm_source=share&utm_campaign=share_via&utm_content=profile&utm_medium=ios_app)",
+    "[📎 LinkedIn](https://www.linkedin.com/in/jonas-f-628179296/)",
     unsafe_allow_html=True
 )
 
@@ -45,25 +45,31 @@ vol_range = st.sidebar.slider("Volatility Range for Heatmap", 0.01, 1.0, (0.1, 0
 sigma_min, sigma_max = vol_range
 
 # -------------------------
-# Calculate and Display
+# Display single option prices
 # -------------------------
 col1, col2 = st.columns(2)
-
 with col1:
     st.metric("CALL Value", f"${bs_price(S, K, T, r, sigma, 'call'):.2f}")
-
 with col2:
     st.metric("PUT Value", f"${bs_price(S, K, T, r, sigma, 'put'):.2f}")
 
 # -------------------------
-# Heatmaps
+# Heatmaps calculations
 # -------------------------
-import plotly.graph_objects as go
+spot_prices = np.linspace(S_min, S_max, 15)
+vols = np.linspace(sigma_min, sigma_max, 15)
+
+call_prices = np.zeros((len(vols), len(spot_prices)))
+put_prices = np.zeros((len(vols), len(spot_prices)))
+
+for i, v in enumerate(vols):
+    for j, s in enumerate(spot_prices):
+        call_prices[i, j] = bs_price(s, K, T, r, v, "call")
+        put_prices[i, j] = bs_price(s, K, T, r, v, "put")
 
 # -------------------------
-# Heatmaps with grid + numbers
+# Heatmap function
 # -------------------------
-
 def create_heatmap(prices, x_labels, y_labels, title):
     fig = go.Figure(data=go.Heatmap(
         z=prices,
@@ -96,6 +102,9 @@ def create_heatmap(prices, x_labels, y_labels, title):
     )
     return fig
 
+# -------------------------
+# Create and display heatmaps
+# -------------------------
 fig_call = create_heatmap(call_prices, np.round(spot_prices,2), np.round(vols,2), "Call Price Heatmap")
 fig_put = create_heatmap(put_prices, np.round(spot_prices,2), np.round(vols,2), "Put Price Heatmap")
 
