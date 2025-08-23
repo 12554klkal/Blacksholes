@@ -37,8 +37,10 @@ sigma = st.sidebar.number_input("Volatility (σ)", value=0.2, step=0.01, min_val
 r = st.sidebar.number_input("Risk-Free Interest Rate", value=0.05, step=0.01)
 
 st.sidebar.header("Heatmap Parameters")
-# S_min and S_max are now automatically calculated based on S
-S_min = st.sidebar.number_input("Min Spot Price", value=S - 20, step=1.0)
+
+# Fix: Ensure S_min is always greater than 0
+S_min_default = S - 20
+S_min = st.sidebar.number_input("Min Spot Price", value=max(1.0, S_min_default), step=1.0, min_value=1.0)
 S_max = st.sidebar.number_input("Max Spot Price", value=S + 20, step=1.0)
 
 # Range slider for volatility
@@ -57,7 +59,6 @@ with col2:
 # -------------------------
 # Heatmaps calculations
 # -------------------------
-# The linspace for spot prices now uses the dynamic S_min and S_max
 spot_prices = np.linspace(S_min, S_max, 10)
 vols = np.linspace(sigma_min, sigma_max, 9)
 
