@@ -58,39 +58,46 @@ with col2:
 # -------------------------
 # Heatmaps
 # -------------------------
-spot_prices = np.linspace(S_min, S_max, 15)
-vols = np.linspace(sigma_min, sigma_max, 15)
+import plotly.graph_objects as go
 
-call_prices = np.zeros((len(vols), len(spot_prices)))
-put_prices = np.zeros((len(vols), len(spot_prices)))
+# -------------------------
+# Heatmaps with grid + numbers
+# -------------------------
 
-for i, v in enumerate(vols):
-    for j, s in enumerate(spot_prices):
-        call_prices[i, j] = bs_price(s, K, T, r, v, "call")
-        put_prices[i, j] = bs_price(s, K, T, r, v, "put")
+def create_heatmap(prices, x_labels, y_labels, title):
+    fig = go.Figure(data=go.Heatmap(
+        z=prices,
+        x=x_labels,
+        y=y_labels,
+        colorscale="RdYlGn_r",
+        colorbar=dict(title="Price"),
+        showscale=True,
+    ))
 
-# Plotly heatmaps with visible gridlines + text
-fig_call = px.imshow(
-    call_prices,
-    x=np.round(spot_prices, 2),
-    y=np.round(vols, 2),
-    color_continuous_scale="RdYlGn_r",
-    text_auto=".2f",
-    aspect="auto"
-)
-fig_call.update_layout(title="Call Price Heatmap", width=700, height=600)
-fig_call.update_traces(hovertemplate="Spot=%{x}, Vol=%{y}<br>Call=%{z:.2f}")
+    # Add annotations (numbers in cells)
+    annotations = []
+    for i, vol in enumerate(y_labels):
+        for j, spot in enumerate(x_labels):
+            annotations.append(
+                dict(
+                    x=spot,
+                    y=vol,
+                    text=f"{prices[i, j]:.2f}",
+                    showarrow=False,
+                    font=dict(color="black" if prices[i,j]<np.max(prices)/2 else "white")
+                )
+            )
+    fig.update_layout(
+        title=title,
+        xaxis=dict(title="Spot Price"),
+        yaxis=dict(title="Volatility"),
+        annotations=annotations,
+        plot_bgcolor="lightgrey"
+    )
+    return fig
 
-fig_put = px.imshow(
-    put_prices,
-    x=np.round(spot_prices, 2),
-    y=np.round(vols, 2),
-    color_continuous_scale="RdYlGn_r",
-    text_auto=".2f",
-    aspect="auto"
-)
-fig_put.update_layout(title="Put Price Heatmap", width=700, height=600)
-fig_put.update_traces(hovertemplate="Spot=%{x}, Vol=%{y}<br>Put=%{z:.2f}")
+fig_call = create_heatmap(call_prices, np.round(spot_prices,2), np.round(vols,2), "Call Price Heatmap")
+fig_put = create_heatmap(put_prices, np.round(spot_prices,2), np.round(vols,2), "Put Price Heatmap")
 
 st.subheader("Options Price - Interactive Heatmaps")
 col3, col4 = st.columns(2)
