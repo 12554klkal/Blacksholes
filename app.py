@@ -1,87 +1,98 @@
-import math
-import numpy as np
 import streamlit as st
+import numpy as np
 import plotly.express as px
+from math import log, sqrt, exp
+from scipy.stats import norm
 
-# ---------- Black–Scholes core ----------
-def _d1_d2(S, K, r, sigma, T):
-    vol_sqrt_t = sigma * math.sqrt(T)
-    d1 = (math.log(S / K) + (r + 0.5 * sigma * sigma) * T) / vol_sqrt_t
-    d2 = d1 - vol_sqrt_t
-    return d1, d2
-
-def _N(x):
-    return 0.5 * (1 + math.erf(x / math.sqrt(2)))
-
-def bs_price(option, S, K, r, sigma, T):
-    d1, d2 = _d1_d2(S, K, r, sigma, T)
-    if option == "Call":
-        return S * _N(d1) - K * math.exp(-r * T) * _N(d2)
+# -------------------------
+# Black-Scholes Functions
+# -------------------------
+def bs_price(S, K, T, r, sigma, option="call"):
+    d1 = (log(S / K) + (r + 0.5 * sigma**2) * T) / (sigma * sqrt(T))
+    d2 = d1 - sigma * sqrt(T)
+    if option == "call":
+        return S * norm.cdf(d1) - K * exp(-r * T) * norm.cdf(d2)
     else:
-        return K * math.exp(-r * T) * _N(-d2) - S * _N(-d1)
+        return K * exp(-r * T) * norm.cdf(-d2) - S * norm.cdf(-d1)
 
-# ---------- UI ----------
-st.set_page_config(page_title="Black–Scholes Pricing Model", layout="wide")
+# -------------------------
+# Streamlit Layout
+# -------------------------
+st.set_page_config(layout="wide")
+st.title("Black-Scholes Pricing Model")
 
-st.title("Black–Scholes Pricing Model")
+# Sidebar for inputs
+st.sidebar.markdown("### Connect with me")
+st.sidebar.markdown(
+    "[📎 LinkedIn](https://www.linkedin.com/in/jonas-f-628179296?utm_source=share&utm_campaign=share_via&utm_content=profile&utm_medium=ios_app)",
+    unsafe_allow_html=True
+)
 
-# Inputs on the RIGHT
-with st.sidebar:
-    st.header("Parameters")
-    S = st.number_input("Current Asset Price", value=100.0, step=1.0)
-    K = st.number_input("Strike Price", value=100.0, step=1.0)
-    T = st.number_input("Time to Maturity (Years)", value=1.0, step=0.1)
-    sigma = st.number_input("Volatility (σ)", value=0.20, step=0.01)
-    r = st.number_input("Risk-Free Interest Rate", value=0.05, step=0.01)
+st.sidebar.header("Input Parameters")
 
-    st.header("Heatmap Parameters")
-    S_min = st.number_input("Min Spot Price", value=80.0, step=1.0)
-    S_max = st.number_input("Max Spot Price", value=120.0, step=1.0)
-    v_min = st.number_input("Min Volatility for Heatmap", value=0.10, step=0.01)
-    v_max = st.number_input("Max Volatility for Heatmap", value=0.30, step=0.01)
+S = st.sidebar.number_input("Current Asset Price", value=100.0, step=1.0)
+K = st.sidebar.number_input("Strike Price", value=100.0, step=1.0)
+T = st.sidebar.number_input("Time to Maturity (Years)", value=1.0, step=0.1, min_value=0.01)
+sigma = st.sidebar.number_input("Volatility (σ)", value=0.2, step=0.01, min_value=0.01)
+r = st.sidebar.number_input("Risk-Free Interest Rate", value=0.05, step=0.01)
 
-# Display single values (call & put at the entered params)
-call_value = bs_price("Call", S, K, r, sigma, T)
-put_value = bs_price("Put", S, K, r, sigma, T)
+st.sidebar.header("Heatmap Parameters")
+S_min = st.sidebar.number_input("Min Spot Price", value=80.0, step=1.0)
+S_max = st.sidebar.number_input("Max Spot Price", value=120.0, step=1.0)
 
+# Range slider for volatility
+vol_range = st.sidebar.slider("Volatility Range for Heatmap", 0.01, 1.0, (0.1, 0.3), step=0.01)
+sigma_min, sigma_max = vol_range
+
+# -------------------------
+# Calculate and Display
+# -------------------------
 col1, col2 = st.columns(2)
-col1.success(f"CALL Value: ${call_value:.2f}")
-col2.error(f"PUT Value: ${put_value:.2f}")
 
-st.markdown("## Options Price – Interactive Heatmap")
+with col1:
+    st.metric("CALL Value", f"${bs_price(S, K, T, r, sigma, 'call'):.2f}")
 
-# Heatmap grid
-spot_range = np.linspace(S_min, S_max, 20)
-vol_range = np.linspace(v_min, v_max, 20)
+with col2:
+    st.metric("PUT Value", f"${bs_price(S, K, T, r, sigma, 'put'):.2f}")
 
-call_prices = np.zeros((len(vol_range), len(spot_range)))
-put_prices = np.zeros_like(call_prices)
+# -------------------------
+# Heatmaps
+# -------------------------
+spot_prices = np.linspace(S_min, S_max, 15)
+vols = np.linspace(sigma_min, sigma_max, 15)
 
-for i, v in enumerate(vol_range):
-    for j, s in enumerate(spot_range):
-        call_prices[i, j] = bs_price("Call", s, K, r, v, T)
-        put_prices[i, j] = bs_price("Put", s, K, r, v, T)
+call_prices = np.zeros((len(vols), len(spot_prices)))
+put_prices = np.zeros((len(vols), len(spot_prices)))
 
-# Heatmap plots (green→red)
+for i, v in enumerate(vols):
+    for j, s in enumerate(spot_prices):
+        call_prices[i, j] = bs_price(s, K, T, r, v, "call")
+        put_prices[i, j] = bs_price(s, K, T, r, v, "put")
+
+# Plotly heatmaps with visible gridlines + text
 fig_call = px.imshow(
     call_prices,
-    x=np.round(spot_range, 2),
-    y=np.round(vol_range, 2),
-    color_continuous_scale=["green", "red"],
-    labels=dict(x="Spot Price", y="Volatility", color="CALL"),
-    aspect="auto",
+    x=np.round(spot_prices, 2),
+    y=np.round(vols, 2),
+    color_continuous_scale="RdYlGn_r",
+    text_auto=".2f",
+    aspect="auto"
 )
+fig_call.update_layout(title="Call Price Heatmap", width=700, height=600)
+fig_call.update_traces(hovertemplate="Spot=%{x}, Vol=%{y}<br>Call=%{z:.2f}")
+
 fig_put = px.imshow(
     put_prices,
-    x=np.round(spot_range, 2),
-    y=np.round(vol_range, 2),
-    color_continuous_scale=["green", "red"],
-    labels=dict(x="Spot Price", y="Volatility", color="PUT"),
-    aspect="auto",
+    x=np.round(spot_prices, 2),
+    y=np.round(vols, 2),
+    color_continuous_scale="RdYlGn_r",
+    text_auto=".2f",
+    aspect="auto"
 )
+fig_put.update_layout(title="Put Price Heatmap", width=700, height=600)
+fig_put.update_traces(hovertemplate="Spot=%{x}, Vol=%{y}<br>Put=%{z:.2f}")
 
-c1, c2 = st.columns(2)
-with c1:
-    st.plotly_chart(fig_call, use_container_width=True)
-with c2:
-    st.plotly_chart(fig_put, use_container_width=True)
+st.subheader("Options Price - Interactive Heatmaps")
+col3, col4 = st.columns(2)
+col3.plotly_chart(fig_call, use_container_width=True)
+col4.plotly_chart(fig_put, use_container_width=True)
