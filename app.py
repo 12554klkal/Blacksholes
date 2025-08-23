@@ -37,8 +37,9 @@ sigma = st.sidebar.number_input("Volatility (σ)", value=0.2, step=0.01, min_val
 r = st.sidebar.number_input("Risk-Free Interest Rate", value=0.05, step=0.01)
 
 st.sidebar.header("Heatmap Parameters")
-S_min = st.sidebar.number_input("Min Spot Price", value=80.0, step=1.0)
-S_max = st.sidebar.number_input("Max Spot Price", value=120.0, step=1.0)
+# S_min and S_max are now automatically calculated based on S
+S_min = st.sidebar.number_input("Min Spot Price", value=S - 20, step=1.0)
+S_max = st.sidebar.number_input("Max Spot Price", value=S + 20, step=1.0)
 
 # Range slider for volatility
 vol_range = st.sidebar.slider("Volatility Range for Heatmap", 0.01, 1.0, (0.1, 0.3), step=0.01)
@@ -56,6 +57,7 @@ with col2:
 # -------------------------
 # Heatmaps calculations
 # -------------------------
+# The linspace for spot prices now uses the dynamic S_min and S_max
 spot_prices = np.linspace(S_min, S_max, 10)
 vols = np.linspace(sigma_min, sigma_max, 9)
 
@@ -74,12 +76,12 @@ def create_heatmap(prices, x_labels, y_labels, title):
     
     # Custom color scale to match the provided image
     custom_colorscale = [
-        [0.0, 'rgb(180, 219, 203)'],  # Light green/teal
-        [0.2, 'rgb(102, 184, 159)'],  # Medium green/teal
-        [0.4, 'rgb(240, 240, 240)'],  # White/Light grey
-        [0.6, 'rgb(255, 150, 150)'],  # Light red/pink
-        [0.8, 'rgb(255, 100, 100)'],  # Medium red
-        [1.0, 'rgb(255, 50, 50)']    # Dark red
+        [0.0, 'rgb(180, 219, 203)'],
+        [0.2, 'rgb(102, 184, 159)'],
+        [0.4, 'rgb(240, 240, 240)'],
+        [0.6, 'rgb(255, 150, 150)'],
+        [0.8, 'rgb(255, 100, 100)'],
+        [1.0, 'rgb(255, 50, 50)']
     ]
 
     fig = go.Figure(data=go.Heatmap(
@@ -92,7 +94,6 @@ def create_heatmap(prices, x_labels, y_labels, title):
         zmax=np.max(prices) 
     ))
 
-    # Add annotations (numbers in cells) with specific color logic
     annotations = []
     mid_point = np.median(prices)
     for i, vol in enumerate(y_labels):
