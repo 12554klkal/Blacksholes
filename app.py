@@ -3,7 +3,6 @@ import numpy as np
 from math import log, sqrt, exp
 from scipy.stats import norm
 import plotly.graph_objects as go
-from plotly.express import colors
 
 # -------------------------
 # Black-Scholes Functions
@@ -37,6 +36,14 @@ T = st.sidebar.number_input("Time to Maturity (Years)", value=1.0, step=0.1, min
 sigma = st.sidebar.number_input("Volatility (σ)", value=0.2, step=0.01, min_value=0.01)
 r = st.sidebar.number_input("Risk-Free Interest Rate", value=0.05, step=0.01)
 
+st.sidebar.header("Heatmap Parameters")
+S_min = st.sidebar.number_input("Min Spot Price", value=80.0, step=1.0)
+S_max = st.sidebar.number_input("Max Spot Price", value=120.0, step=1.0)
+
+# Range slider for volatility
+vol_range = st.sidebar.slider("Volatility Range for Heatmap", 0.01, 1.0, (0.1, 0.3), step=0.01)
+sigma_min, sigma_max = vol_range
+
 # -------------------------
 # Display single option prices
 # -------------------------
@@ -49,15 +56,8 @@ with col2:
 # -------------------------
 # Heatmaps calculations
 # -------------------------
-
-# The specific values for the original heatmap
-spot_prices = np.array([80.0, 84.44, 88.89, 93.33, 97.78, 102.22, 106.67, 111.11, 115.56, 120.0])
-vols = np.array([0.1, 0.12, 0.14, 0.17, 0.19, 0.21, 0.23, 0.26, 0.28, 0.3])
-
-# The provided code used a range slider. I have removed it to use the original data points
-# which results in the correct heatmap.
-# If you want to use the range slider, you need to use np.linspace to create your ranges again.
-# This code will replicate the first image.
+spot_prices = np.linspace(S_min, S_max, 10)
+vols = np.linspace(sigma_min, sigma_max, 9)
 
 call_prices = np.zeros((len(vols), len(spot_prices)))
 put_prices = np.zeros((len(vols), len(spot_prices)))
@@ -88,14 +88,13 @@ def create_heatmap(prices, x_labels, y_labels, title):
         y=y_labels,
         colorscale=custom_colorscale,
         colorbar=dict(title="Price", thickness=20),
-        zmin=0,  # Set the minimum value for the color scale to 0
-        zmax=np.max(prices) # Set the maximum value to the max price
+        zmin=np.min(prices),
+        zmax=np.max(prices) 
     ))
 
     # Add annotations (numbers in cells) with specific color logic
     annotations = []
-    # Find the middle point of the color scale for text color logic
-    mid_point = np.max(prices)/2
+    mid_point = np.median(prices)
     for i, vol in enumerate(y_labels):
         for j, spot in enumerate(x_labels):
             annotations.append(
@@ -104,7 +103,7 @@ def create_heatmap(prices, x_labels, y_labels, title):
                     y=vol,
                     text=f"{prices[i, j]:.2f}",
                     showarrow=False,
-                    font=dict(color="black" if prices[i, j] < mid_point else "white"),
+                    font=dict(color="white" if prices[i,j] > mid_point else "black")
                 )
             )
 
@@ -113,8 +112,6 @@ def create_heatmap(prices, x_labels, y_labels, title):
         xaxis=dict(title="Spot Price", tickmode='array', tickvals=x_labels, ticktext=[f'{p:.2f}' for p in x_labels]),
         yaxis=dict(title="Volatility", tickmode='array', tickvals=y_labels, ticktext=[f'{v:.2f}' for v in y_labels]),
         annotations=annotations,
-        # Original heatmap has a white background. This overrides the lightgrey from your code.
-        plot_bgcolor='white',
     )
     return fig
 
