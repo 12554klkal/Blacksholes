@@ -70,10 +70,14 @@ for i, v in enumerate(vols):
         call_prices[i, j] = bs_price(s, K, T, r, v, "call")
         put_prices[i, j] = bs_price(s, K, T, r, v, "put")
 
+# Dynamic min and max for the color scale
+call_min_price, call_max_price = call_prices.min(), call_prices.max()
+put_min_price, put_max_price = put_prices.min(), put_prices.max()
+
 # -------------------------
 # Heatmap function
 # -------------------------
-def create_heatmap(prices, x_labels, y_labels, title):
+def create_heatmap(prices, x_labels, y_labels, title, min_price, max_price):
     
     # Custom color scale to match the provided image
     custom_colorscale = [
@@ -91,8 +95,8 @@ def create_heatmap(prices, x_labels, y_labels, title):
         y=y_labels,
         colorscale=custom_colorscale,
         colorbar=dict(title="Price", thickness=20),
-        zmin=np.min(prices),
-        zmax=np.max(prices) 
+        zmin=min_price,
+        zmax=max_price
     ))
 
     annotations = []
@@ -123,8 +127,9 @@ def create_heatmap(prices, x_labels, y_labels, title):
 st.subheader("Options Price - Interactive Heatmaps")
 col3, col4 = st.columns(2)
 with col3:
-    fig_call = create_heatmap(call_prices, spot_prices, vols, "CALL")
+    fig_call = create_heatmap(call_prices, spot_prices, vols, "CALL", call_min_price, call_max_price)
     st.plotly_chart(fig_call, use_container_width=True)
 with col4:
-    fig_put = create_heatmap(put_prices, spot_prices, vols, "PUT")
+    fig_put = create_heatmap(put_prices, spot_prices, vols, "PUT", put_min_price, put_max_price)
     st.plotly_chart(fig_put, use_container_width=True)
+
