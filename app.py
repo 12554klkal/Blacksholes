@@ -58,6 +58,7 @@ st.sidebar.header("Asset Parameters")
 input_method = st.sidebar.radio("Select Input Method", ("Search for a Stock", "Enter Manually"))
 
 S, sigma = 100.0, 0.2  # Set default values
+ticker = None # Initialize ticker to avoid errors
 
 if input_method == "Search for a Stock":
     stock_symbol = st.sidebar.text_input("Enter a stock symbol (e.g., AAPL, GOOGL)", 'AAPL').upper()
@@ -89,9 +90,76 @@ else:  # "Enter Manually"
     sigma = st.sidebar.number_input("Volatility (σ)", value=0.2, step=0.01, min_value=0.01)
 
 st.sidebar.header("Option Parameters")
-K = st.sidebar.number_input("Strike Price", value=100.0, step=1.0)
+
+# --- New: Select strike strategy or manual input ---
+strike_input_method = st.sidebar.radio("Strike Price Input", ("Select Strike Strategy", "Enter Manually"))
+
+K = 100.0 # Default value
+
+if strike_input_method == "Select Strike Strategy":
+    if input_method == "Search for a Stock" and ticker:
+        try:
+            expiries = ticker.options
+            if expiries:
+                exp_date = expiries[0]
+                chain = ticker.option_chain(exp_date)
+                strikes = sorted(list(set(chain.calls['strike'].tolist() + chain.puts['strike'].tolist())))
+                
+                # Determine strike based on strategy
+                strike_strategy = st.sidebar.selectbox(
+                    "Select a Strike Price Strategy",
+                    ["At-the-Money (ATM)", "In-the-Money (ITM)", "Out-of-the-Money (OTM)"]
+                )
+
+                if strike_strategy == "At-the-Money (ATM)":
+                    K = strikes[np.abs(np.array(strikes) - S).argmin()]
+                    st.sidebar.markdown(f"**Selected Strike Price:** ${K:.2f}")
+                elif strike_strategy == "In-the-Money (ITM)":
+                    if S > strikes[0]:
+                        itm_strikes = [s for s in strikes if s < S]
+                        if itm_strikes:
+                            K = max(itm_strikes)
+                            st.sidebar.markdown(f"**Selected Strike Price:** ${K:.2f}")
+                        else:
+                            st.sidebar.warning("No ITM options found. Using ATM strike.")
+                            K = strikes[np.abs(np.array(strikes) - S).argmin()]
+                            st.sidebar.markdown(f"**Selected Strike Price:** ${K:.2f}")
+                    else:
+                        st.sidebar.warning("Stock is below lowest strike. Using ATM strike.")
+                        K = strikes[np.abs(np.array(strikes) - S).argmin()]
+                        st.sidebar.markdown(f"**Selected Strike Price:** ${K:.2f}")
+                elif strike_strategy == "Out-of-the-Money (OTM)":
+                    if S < strikes[-1]:
+                        otm_strikes = [s for s in strikes if s > S]
+                        if otm_strikes:
+                            K = min(otm_strikes)
+                            st.sidebar.markdown(f"**Selected Strike Price:** ${K:.2f}")
+                        else:
+                            st.sidebar.warning("No OTM options found. Using ATM strike.")
+                            K = strikes[np.abs(np.array(strikes) - S).argmin()]
+                            st.sidebar.markdown(f"**Selected Strike Price:** ${K:.2f}")
+                    else:
+                        st.sidebar.warning("Stock is above highest strike. Using ATM strike.")
+                        K = strikes[np.abs(np.array(strikes) - S).argmin()]
+                        st.sidebar.markdown(f"**Selected Strike Price:** ${K:.2f}")
+
+            else:
+                st.sidebar.warning("No option data available. Please enter strike manually.")
+                K = st.sidebar.number_input("Manual Strike Price", value=100.0, step=1.0)
+
+        except Exception:
+            st.sidebar.warning("Could not fetch strike prices. Please enter manually.")
+            K = st.sidebar.number_input("Manual Strike Price", value=100.0, step=1.0)
+    else:
+        st.sidebar.warning("Please search for a stock to use this feature.")
+        K = st.sidebar.number_input("Manual Strike Price", value=100.0, step=1.0)
+
+else: # "Enter Manually"
+    K = st.sidebar.number_input("Manual Strike Price", value=100.0, step=1.0)
+
 T = st.sidebar.number_input("Time to Maturity (Years)", value=1.0, step=0.1, min_value=0.01)
 r = st.sidebar.number_input("Risk-Free Interest Rate", value=0.05, step=0.01)
+
 
 # -------------------------
 # Display single option prices
@@ -279,5 +347,3 @@ if input_method == "Search for a Stock" and stock_symbol and S is not None:
     
     except Exception as e:
         st.error(f"Error fetching option chain data: {e}")
-
-
