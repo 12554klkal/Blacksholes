@@ -50,21 +50,21 @@ with col2:
 # -------------------------
 st.subheader("Options Price - Interactive Heatmaps")
 
-# Dynamically calculate S_min and S_max based on the current asset price (S)
-# This centers the heatmap on the current price.
-s_range_diff = 40.0 # A fixed range for the heatmap, you can adjust this
-S_min = max(1.0, S - s_range_diff / 2) # Ensure S_min is never negative or zero
-S_max = S + s_range_diff / 2
+# Dynamically set default values but allow manual override
+default_s_min = max(1.0, S - 20)
+default_s_max = S + 20
+S_min = st.sidebar.number_input("Min Spot Price", value=default_s_min, step=1.0)
+S_max = st.sidebar.number_input("Max Spot Price", value=default_s_max, step=1.0)
 
-# Dynamically calculate the volatility range based on the current asset price
-# Higher-priced stocks might have a different volatility range.
-vol_range_max = 0.5 if S < 200 else 0.3
-sigma_min_val = 0.1
-sigma_max_val = st.slider("Max Volatility for Heatmap", 0.01, vol_range_max, 0.3, step=0.01)
+# Add the volatility sliders back to the sidebar
+st.sidebar.markdown("---")
+st.sidebar.subheader("Volatility Range for Heatmap")
+sigma_min = st.sidebar.slider("Min Volatility", 0.01, 1.0, 0.1, step=0.01)
+sigma_max = st.sidebar.slider("Max Volatility", 0.01, 1.0, 0.3, step=0.01)
 
 # Generate the data points for the heatmap
 spot_prices = np.linspace(S_min, S_max, 10)
-vols = np.linspace(sigma_min_val, sigma_max_val, 9)
+vols = np.linspace(sigma_min, sigma_max, 9)
 
 # Calculate prices for the heatmap grid
 call_prices = np.zeros((len(vols), len(spot_prices)))
@@ -72,8 +72,10 @@ put_prices = np.zeros((len(vols), len(spot_prices)))
 
 for i, v in enumerate(vols):
     for j, s in enumerate(spot_prices):
-        call_prices[i, j] = bs_price(s, K, T, r, v, "call")
-        put_prices[i, j] = bs_price(s, K, T, r, v, "put")
+        # Add a check to prevent log(0) or log(negative)
+        if s > 0:
+            call_prices[i, j] = bs_price(s, K, T, r, v, "call")
+            put_prices[i, j] = bs_price(s, K, T, r, v, "put")
 
 # Dynamic min and max for the color scale
 call_min_price, call_max_price = call_prices.min(), call_prices.max()
@@ -135,6 +137,3 @@ with col3:
 with col4:
     fig_put = create_heatmap(put_prices, spot_prices, vols, "PUT", put_min_price, put_max_price)
     st.plotly_chart(fig_put, use_container_width=True)
-
-
-
