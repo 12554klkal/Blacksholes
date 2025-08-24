@@ -74,6 +74,10 @@ if input_method == "Search for a Stock":
                 st.sidebar.warning("Could not calculate historical volatility. Please enter manually.")
                 sigma = st.sidebar.number_input("Manual Volatility (σ)", value=0.2, step=0.01, min_value=0.01)
 
+            # Add the link to the volatility search page
+            volatility_link = f"https://www.optionistics.com/historical-volatility/{stock_symbol}"
+            st.sidebar.markdown(f"[📊 Search for Historic Volatility]({volatility_link})")
+
         except (KeyError, IndexError):
             st.sidebar.error("Invalid stock symbol or could not fetch data.")
             S = st.sidebar.number_input("Current Asset Price", value=100.0, step=1.0)
