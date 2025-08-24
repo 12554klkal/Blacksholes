@@ -11,6 +11,7 @@ import yfinance as yf
 # Black-Scholes & Implied Volatility Functions
 # -------------------------
 def bs_price(S, K, T, r, sigma, option_type="call"):
+    """Black-Scholes formula to calculate option price."""
     d1 = (log(S / K) + (r + 0.5 * sigma**2) * T) / (sigma * sqrt(T))
     d2 = d1 - sigma * sqrt(T)
     if option_type == "call":
@@ -19,18 +20,18 @@ def bs_price(S, K, T, r, sigma, option_type="call"):
         return K * exp(-r * T) * norm.cdf(-d2) - S * norm.cdf(-d1)
 
 def find_implied_volatility(market_price, S, K, T, r, option_type):
+    """Finds implied volatility using Brent's method."""
     if T <= 0 or market_price <= 0:
         return np.nan
     try:
-        # Use a root-finding algorithm to find sigma
         func = lambda sigma: bs_price(S, K, T, r, sigma, option_type) - market_price
         implied_vol = brentq(func, 0.0001, 10)
         return implied_vol
     except:
         return np.nan
 
-# Function to calculate historical volatility
 def calculate_historical_volatility(stock_symbol):
+    """Calculates annualized historical volatility from yfinance data."""
     try:
         data = yf.download(stock_symbol, period="1y", interval="1d", progress=False)
         returns = np.log(data['Adj Close'] / data['Adj Close'].shift(1)).dropna()
@@ -91,7 +92,6 @@ st.sidebar.header("Option Parameters")
 K = st.sidebar.number_input("Strike Price", value=100.0, step=1.0)
 T = st.sidebar.number_input("Time to Maturity (Years)", value=1.0, step=0.1, min_value=0.01)
 r = st.sidebar.number_input("Risk-Free Interest Rate", value=0.05, step=0.01)
-
 
 # -------------------------
 # Display single option prices
@@ -183,11 +183,18 @@ with col4:
 # -------------------------
 # New Feature: Options Screener
 # -------------------------
-st.subheader("Cheapest Options Screener")
+st.subheader("Highest Potential Profit Screener")
 st.sidebar.subheader("Screener Parameters")
-price_threshold = st.sidebar.number_input("Max Market Price for Screening", value=0.5, step=0.05, min_value=0.01)
-
 if input_method == "Search for a Stock" and stock_symbol:
+    if S is not None:
+        target_price = st.sidebar.number_input(
+            "Your Target Stock Price", 
+            value=float(S), 
+            step=1.0, 
+            help="Enter the price you believe the stock will reach by expiry."
+        )
+
+if input_method == "Search for a Stock" and stock_symbol and S is not None:
     try:
         expiries = yf.Ticker(stock_symbol).options
         if not expiries:
@@ -200,37 +207,75 @@ if input_method == "Search for a Stock" and stock_symbol:
             calls = chain.calls
             puts = chain.puts
             
-            cheapest_options = []
-
-            # Combine calls and puts for a single list
-            all_options = pd.concat([calls, puts])
+            profitable_options = []
             
-            for _, row in all_options.iterrows():
-                try:
-                    market_price = row.get('lastPrice', row.get('bid'))
-                    if pd.isna(market_price) or market_price <= 0:
-                        continue
-                        
-                    # Filter based on the price threshold
-                    if market_price <= price_threshold:
-                        cheapest_options.append({
-                            'Type': 'Call' if row['contractSymbol'].endswith('C') else 'Put',
-                            'Strike': row['strike'],
-                            'Market Price': f"${market_price:.2f}",
-                            'Link': f"https://finance.yahoo.com/quote/{row['contractSymbol']}"
-                        })
-                except Exception as e:
-                    continue
-
-            if cheapest_options:
-                st.write(f"The cheapest options (market price <= ${price_threshold:.2f}) for this expiry:")
-                df_cheapest = pd.DataFrame(cheapest_options)
-                df_cheapest['Link'] = df_cheapest['Link'].apply(lambda x: f'<a href="{x}" target="_blank">View on Yahoo Finance</a>')
-                df_cheapest.sort_values(by=['Type', 'Strike'], inplace=True)
-                
-                st.markdown(df_cheapest.to_html(escape=False), unsafe_allow_html=True)
+            # Time to expiry in years
+            days_to_expiry = (pd.to_datetime(exp_date) - pd.Timestamp.now()).days
+            if days_to_expiry <= 0:
+                st.warning("Expiration date is in the past or today. Cannot calculate profit.")
             else:
-                st.info(f"No options found with a market price below ${price_threshold:.2f} for this expiry.")
+                T_days = days_to_expiry / 365.0
 
+                # Analyze call options
+                for _, row in calls.iterrows():
+                    market_price = row.get('lastPrice', row.get('bid'))
+                    strike = row['strike']
+
+                    if not pd.isna(market_price) and market_price > 0:
+                        # Calculate theoretical value at target price
+                        theoretical_value_at_target = bs_price(target_price, strike, T_days, r, sigma, 'call')
+                        
+                        potential_profit = theoretical_value_at_target - market_price
+                        
+                        if potential_profit > 0:
+                            # Calculate ROI to find the most leveraged options
+                            roi = potential_profit / market_price
+                            profitable_options.append({
+                                'Type': 'Call',
+                                'Strike': strike,
+                                'Market Price': f"${market_price:.2f}",
+                                'Potential Profit': f"${potential_profit:.2f}",
+                                'ROI': f"{roi:.2%}",
+                                'Link': f"https://finance.yahoo.com/quote/{row['contractSymbol']}",
+                                'sort_roi': roi
+                            })
+
+                # Analyze put options
+                for _, row in puts.iterrows():
+                    market_price = row.get('lastPrice', row.get('bid'))
+                    strike = row['strike']
+
+                    if not pd.isna(market_price) and market_price > 0:
+                        # Calculate theoretical value at target price
+                        theoretical_value_at_target = bs_price(target_price, strike, T_days, r, sigma, 'put')
+
+                        potential_profit = theoretical_value_at_target - market_price
+                        
+                        if potential_profit > 0:
+                            # Calculate ROI to find the most leveraged options
+                            roi = potential_profit / market_price
+                            profitable_options.append({
+                                'Type': 'Put',
+                                'Strike': strike,
+                                'Market Price': f"${market_price:.2f}",
+                                'Potential Profit': f"${potential_profit:.2f}",
+                                'ROI': f"{roi:.2%}",
+                                'Link': f"https://finance.yahoo.com/quote/{row['contractSymbol']}",
+                                'sort_roi': roi
+                            })
+
+                if profitable_options:
+                    st.write(f"Top 10 options with the highest ROI for a target price of **${target_price:.2f}**:")
+                    df_profitable = pd.DataFrame(profitable_options)
+                    df_profitable = df_profitable.sort_values(by='sort_roi', ascending=False).head(10)
+                    df_profitable['Link'] = df_profitable['Link'].apply(lambda x: f'<a href="{x}" target="_blank">View on Yahoo Finance</a>')
+                    
+                    # Drop the temporary column used for sorting
+                    df_profitable = df_profitable.drop(columns=['sort_roi'])
+                    
+                    st.markdown(df_profitable.to_html(escape=False), unsafe_allow_html=True)
+                else:
+                    st.info("No options with a positive potential profit found based on your target price.")
+    
     except Exception as e:
         st.error(f"Error fetching option chain data: {e}")
