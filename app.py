@@ -6,6 +6,42 @@ from scipy.stats import norm
 from scipy.optimize import brentq
 import plotly.graph_objects as go
 import yfinance as yf
+import requests
+
+# -------------------------
+# Alpha Vantage API Integration
+# -------------------------
+def calculate_historical_volatility_av(stock_symbol, api_key):
+    """
+    Fetches daily stock data from Alpha Vantage and calculates annualized historical volatility.
+    """
+    url = f"https://www.alphavantage.co/query?function=TIME_SERIES_DAILY_ADJUSTED&symbol={stock_symbol}&outputsize=full&apikey={api_key}"
+    try:
+        response = requests.get(url, timeout=10)
+        data = response.json()
+        
+        # Check for API errors
+        if "Time Series (Daily)" not in data:
+            st.warning("Alpha Vantage API error or no data for this symbol. Falling back to yfinance or manual input.")
+            return None
+            
+        time_series = data["Time Series (Daily)"]
+        df = pd.DataFrame.from_dict(time_series, orient='index', dtype=float)
+        
+        # Use adjusted close prices for accurate volatility calculation
+        adj_close = df['5. adjusted close'].iloc[::-1]
+        returns = np.log(adj_close / adj_close.shift(1)).dropna()
+        
+        # Calculate annualized volatility (252 trading days)
+        volatility = returns.std() * np.sqrt(252)
+        return volatility
+        
+    except requests.exceptions.RequestException as e:
+        st.error(f"Network error while fetching from Alpha Vantage: {e}")
+        return None
+    except Exception as e:
+        st.error(f"Error processing Alpha Vantage data: {e}")
+        return None
 
 # -------------------------
 # Black-Scholes & Implied Volatility Functions
@@ -22,15 +58,13 @@ def find_implied_volatility(market_price, S, K, T, r, option_type):
     if T <= 0 or market_price <= 0:
         return np.nan
     try:
-        # Use a root-finding algorithm to find sigma
         func = lambda sigma: bs_price(S, K, T, r, sigma, option_type) - market_price
         implied_vol = brentq(func, 0.0001, 10)
         return implied_vol
     except:
         return np.nan
 
-# Function to calculate historical volatility
-def calculate_historical_volatility(stock_symbol):
+def calculate_historical_volatility_yf(stock_symbol):
     try:
         data = yf.download(stock_symbol, period="1y", interval="1d", progress=False)
         returns = np.log(data['Adj Close'] / data['Adj Close'].shift(1)).dropna()
@@ -61,17 +95,24 @@ S, sigma = 100.0, 0.2  # Set default values
 if input_method == "Search for a Stock":
     stock_symbol = st.sidebar.text_input("Enter a stock symbol (e.g., AAPL, GOOGL)", 'AAPL').upper()
     
+    # Try to get the API key from secrets.toml
+    av_api_key = st.secrets["av_api"]["key"]
+    
     if stock_symbol:
         ticker = yf.Ticker(stock_symbol)
         try:
             S = ticker.info['regularMarketPrice']
             st.sidebar.markdown(f"**Current Price:** ${S:.2f}")
 
-            sigma = calculate_historical_volatility(stock_symbol)
+            # Try Alpha Vantage first, then fall back to yfinance
+            sigma = calculate_historical_volatility_av(stock_symbol, av_api_key)
+            if sigma is None:
+                sigma = calculate_historical_volatility_yf(stock_symbol)
+
             if sigma is not None:
                 st.sidebar.markdown(f"**Historical Volatility:** {sigma:.2%}")
             else:
-                st.sidebar.warning("Could not calculate historical volatility. Please enter manually.")
+                st.sidebar.warning("Could not calculate volatility. Please enter manually.")
                 sigma = st.sidebar.number_input("Manual Volatility (σ)", value=0.2, step=0.01, min_value=0.01)
 
         except (KeyError, IndexError):
@@ -203,10 +244,8 @@ if input_method == "Search for a Stock" and stock_symbol:
                         
                     strike = row['strike']
                     
-                    # Calculate implied volatility
                     iv = find_implied_volatility(market_price, S, strike, (pd.to_datetime(exp_date) - pd.Timestamp.now()).days / 365, r, 'call')
                     
-                    # If IV is lower than historical vol, it's undervalued
                     if not np.isnan(iv) and iv < sigma:
                         undervalued_options.append({
                             'Type': 'Call',
