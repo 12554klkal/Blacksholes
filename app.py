@@ -22,7 +22,7 @@ def calculate_volatility(stock_symbol):
     try:
         data = yf.download(stock_symbol, period="1y", interval="1d", progress=False)
         returns = np.log(data['Adj Close'] / data['Adj Close'].shift(1)).dropna()
-        volatility = returns.std() * np.sqrt(252) # Annualize volatility
+        volatility = returns.std() * np.sqrt(252)  # Annualize volatility
         return volatility
     except:
         return None
@@ -44,9 +44,11 @@ st.sidebar.header("Asset Parameters")
 
 input_method = st.sidebar.radio("Select Input Method", ("Search for a Stock", "Enter Manually"))
 
+S, sigma = 100.0, 0.2  # Set default values
+
 if input_method == "Search for a Stock":
     stock_symbol = st.sidebar.text_input("Enter a stock symbol (e.g., AAPL, GOOGL)", 'AAPL').upper()
-    S, sigma = 100.0, 0.2  # Default values
+    
     if stock_symbol:
         ticker = yf.Ticker(stock_symbol)
         try:
@@ -57,15 +59,15 @@ if input_method == "Search for a Stock":
             if sigma is not None:
                 st.sidebar.markdown(f"**Historical Volatility:** {sigma:.2%}")
             else:
-                st.sidebar.warning("Could not calculate volatility.")
+                st.sidebar.warning("Could not calculate volatility. Please enter manually.")
                 sigma = st.sidebar.number_input("Manual Volatility (σ)", value=0.2, step=0.01, min_value=0.01)
 
-        except:
+        except (KeyError, IndexError):
             st.sidebar.error("Invalid stock symbol or could not fetch data.")
-            S = 100.0
-            sigma = 0.2
+            S = st.sidebar.number_input("Current Asset Price", value=100.0, step=1.0)
+            sigma = st.sidebar.number_input("Volatility (σ)", value=0.2, step=0.01, min_value=0.01)
 
-else: # "Enter Manually"
+else:  # "Enter Manually"
     S = st.sidebar.number_input("Current Asset Price", value=100.0, step=1.0)
     sigma = st.sidebar.number_input("Volatility (σ)", value=0.2, step=0.01, min_value=0.01)
 
@@ -75,50 +77,18 @@ T = st.sidebar.number_input("Time to Maturity (Years)", value=1.0, step=0.1, min
 r = st.sidebar.number_input("Risk-Free Interest Rate", value=0.05, step=0.01)
 
 
-# --- Create and display the summary table on the main page ---
+# -------------------------
+# Display single option prices
+# -------------------------
 st.subheader("Current Option Prices")
 
-# Calculate the values
-call_value = bs_price(S, K, T, r, sigma, 'call')
-put_value = bs_price(S, K, T, r, sigma, 'put')
-
-# Create a DataFrame
-data = {
-    'Parameter': [
-        'Current Asset Price',
-        'Strike Price',
-        'Time to Maturity (Years)',
-        'Volatility (σ)',
-        'Risk-Free Interest Rate',
-        'CALL Value',
-        'PUT Value'
-    ],
-    'Value': [
-        f'{S:.4f}',
-        f'{K:.4f}',
-        f'{T:.4f}',
-        f'{sigma:.4f}',
-        f'{r:.4f}',
-        f'${call_value:.2f}',
-        f'${put_value:.2f}'
-    ]
-}
-
-df = pd.DataFrame(data)
-
-# Create a function to apply conditional styling
-def style_values(val):
-    if isinstance(val, str) and '$' in val:
-        num = float(val.replace('$', ''))
-        color = 'green' if num > 0 else 'red'
-        return f'background-color: {color}; color: white'
-    return None
-
-# Apply the styling to the DataFrame
-styled_df = df.style.applymap(style_values, subset=['Value'])
-
-st.dataframe(styled_df, hide_index=True)
-# --- END NEW CODE ---
+col1, col2 = st.columns(2)
+with col1:
+    call_value = bs_price(S, K, T, r, sigma, 'call')
+    st.metric("CALL Value", f"${call_value:.2f}")
+with col2:
+    put_value = bs_price(S, K, T, r, sigma, 'put')
+    st.metric("PUT Value", f"${put_value:.2f}")
 
 # -------------------------
 # Heatmap Parameters and calculations
@@ -148,6 +118,7 @@ put_prices = np.zeros((len(vols), len(spot_prices)))
 
 for i, v in enumerate(vols):
     for j, s in enumerate(spot_prices):
+        # Add a check to prevent log(0) or log(negative)
         if s > 0:
             call_prices[i, j] = bs_price(s, K, T, r, v, "call")
             put_prices[i, j] = bs_price(s, K, T, r, v, "put")
