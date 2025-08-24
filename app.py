@@ -58,6 +58,7 @@ st.sidebar.header("Asset Parameters")
 input_method = st.sidebar.radio("Select Input Method", ("Search for a Stock", "Enter Manually"))
 
 S, sigma = 100.0, 0.2  # Set default values
+ticker = None # Initialize ticker to avoid errors
 
 if input_method == "Search for a Stock":
     stock_symbol = st.sidebar.text_input("Enter a stock symbol (e.g., AAPL, GOOGL)", 'AAPL').upper()
@@ -89,7 +90,35 @@ else:  # "Enter Manually"
     sigma = st.sidebar.number_input("Volatility (σ)", value=0.2, step=0.01, min_value=0.01)
 
 st.sidebar.header("Option Parameters")
-K = st.sidebar.number_input("Strike Price", value=100.0, step=1.0)
+
+# --- Pull Strike Price Automatically ---
+K = 100.0 # Default value
+if input_method == "Search for a Stock" and ticker:
+    try:
+        expiries = ticker.options
+        if expiries:
+            exp_date = expiries[0]
+            chain = ticker.option_chain(exp_date)
+            strikes = sorted(list(set(chain.calls['strike'].tolist() + chain.puts['strike'].tolist())))
+            
+            # Find the strike closest to the current stock price
+            default_strike_index = (np.abs(np.array(strikes) - S)).argmin()
+            
+            K = st.sidebar.selectbox(
+                "Select Strike Price",
+                strikes,
+                index=default_strike_index
+            )
+        else:
+            st.sidebar.warning("No option data available for this stock. Please enter strike manually.")
+            K = st.sidebar.number_input("Manual Strike Price", value=100.0, step=1.0)
+
+    except Exception:
+        st.sidebar.warning("Could not fetch strike prices. Please enter manually.")
+        K = st.sidebar.number_input("Manual Strike Price", value=100.0, step=1.0)
+else:
+    K = st.sidebar.number_input("Strike Price", value=100.0, step=1.0)
+
 T = st.sidebar.number_input("Time to Maturity (Years)", value=1.0, step=0.1, min_value=0.01)
 r = st.sidebar.number_input("Risk-Free Interest Rate", value=0.05, step=0.01)
 
@@ -279,3 +308,4 @@ if input_method == "Search for a Stock" and stock_symbol and S is not None:
     
     except Exception as e:
         st.error(f"Error fetching option chain data: {e}")
+
