@@ -75,7 +75,7 @@ if input_method == "Search for a Stock":
                 sigma = st.sidebar.number_input("Manual Volatility (σ)", value=0.2, step=0.01, min_value=0.01)
 
             # Add the link to the volatility search page
-            volatility_link = f"https://www.optionistics.com/historical-volatility/{stock_symbol}"
+            volatility_link = f"https://www.alphaquery.com/stock/{stock_symbol}/volatility-option-statistics/30-day/historical-volatility"
             st.sidebar.markdown(f"[📊 Search for Historic Volatility]({volatility_link})")
 
         except (KeyError, IndexError):
