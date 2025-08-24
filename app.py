@@ -19,12 +19,11 @@ def bs_price(S, K, T, r, sigma, option_type="call"):
         return K * exp(-r * T) * norm.cdf(-d2) - S * norm.cdf(-d1)
 
 def find_implied_volatility(market_price, S, K, T, r, option_type):
-    if T <= 0:
+    if T <= 0 or market_price <= 0:
         return np.nan
     try:
         # Use a root-finding algorithm to find sigma
         func = lambda sigma: bs_price(S, K, T, r, sigma, option_type) - market_price
-        # Set a reasonable search range for volatility
         implied_vol = brentq(func, 0.0001, 10)
         return implied_vol
     except:
@@ -88,6 +87,7 @@ st.sidebar.header("Option Parameters")
 K = st.sidebar.number_input("Strike Price", value=100.0, step=1.0)
 T = st.sidebar.number_input("Time to Maturity (Years)", value=1.0, step=0.1, min_value=0.01)
 r = st.sidebar.number_input("Risk-Free Interest Rate", value=0.05, step=0.01)
+
 
 # -------------------------
 # Display single option prices
@@ -182,31 +182,31 @@ with col4:
 st.subheader("Options Screener - Find Undervalued Options")
 if input_method == "Search for a Stock" and stock_symbol:
     try:
-        # Fetch available expiration dates
         expiries = yf.Ticker(stock_symbol).options
         if not expiries:
             st.warning("No option chain data available for this stock.")
         else:
-            # Get the first available expiration date
             exp_date = expiries[0]
             st.info(f"Analyzing options for expiry: **{exp_date}**")
 
-            # Fetch option chain for the nearest expiry
             chain = yf.Ticker(stock_symbol).option_chain(exp_date)
             calls = chain.calls
             puts = chain.puts
             
             undervalued_options = []
 
-            # Analyze Call Options
             for _, row in calls.iterrows():
                 try:
-                    market_price = row['lastPrice']
+                    market_price = row.get('lastPrice', row.get('bid'))
+                    if pd.isna(market_price) or market_price <= 0:
+                        continue
+                        
                     strike = row['strike']
                     
-                    # Calculate implied volatility from market price
-                    iv = find_implied_volatility(market_price, S, strike, T, r, 'call')
+                    # Calculate implied volatility
+                    iv = find_implied_volatility(market_price, S, strike, (pd.to_datetime(exp_date) - pd.Timestamp.now()).days / 365, r, 'call')
                     
+                    # If IV is lower than historical vol, it's undervalued
                     if not np.isnan(iv) and iv < sigma:
                         undervalued_options.append({
                             'Type': 'Call',
@@ -214,19 +214,21 @@ if input_method == "Search for a Stock" and stock_symbol:
                             'Market Price': f"${market_price:.2f}",
                             'BS Price': f"${bs_price(S, strike, T, r, sigma, 'call'):.2f}",
                             'Implied Vol': f"{iv:.2%}",
-                            'Historical Vol': f"{sigma:.2%}"
+                            'Historical Vol': f"{sigma:.2%}",
+                            'Link': f"https://finance.yahoo.com/quote/{row['contractSymbol']}"
                         })
                 except Exception as e:
                     continue
 
-            # Analyze Put Options
             for _, row in puts.iterrows():
                 try:
-                    market_price = row['lastPrice']
+                    market_price = row.get('lastPrice', row.get('bid'))
+                    if pd.isna(market_price) or market_price <= 0:
+                        continue
+                        
                     strike = row['strike']
                     
-                    # Calculate implied volatility from market price
-                    iv = find_implied_volatility(market_price, S, strike, T, r, 'put')
+                    iv = find_implied_volatility(market_price, S, strike, (pd.to_datetime(exp_date) - pd.Timestamp.now()).days / 365, r, 'put')
 
                     if not np.isnan(iv) and iv < sigma:
                         undervalued_options.append({
@@ -235,19 +237,21 @@ if input_method == "Search for a Stock" and stock_symbol:
                             'Market Price': f"${market_price:.2f}",
                             'BS Price': f"${bs_price(S, strike, T, r, sigma, 'put'):.2f}",
                             'Implied Vol': f"{iv:.2%}",
-                            'Historical Vol': f"{sigma:.2%}"
+                            'Historical Vol': f"{sigma:.2%}",
+                            'Link': f"https://finance.yahoo.com/quote/{row['contractSymbol']}"
                         })
                 except Exception as e:
                     continue
 
             if undervalued_options:
-                st.write("Potentially **Undervalued Options** (Market price < Black-Scholes price)")
+                st.write("Potentially **Undervalued Options** (Implied Vol < Historical Vol)")
                 df_undervalued = pd.DataFrame(undervalued_options)
+                df_undervalued['Link'] = df_undervalued['Link'].apply(lambda x: f'<a href="{x}" target="_blank">View on Yahoo Finance</a>')
                 df_undervalued.sort_values(by=['Type', 'Strike'], inplace=True)
-                st.dataframe(df_undervalued, hide_index=True)
+                
+                st.markdown(df_undervalued.to_html(escape=False), unsafe_allow_html=True)
             else:
                 st.info("No options found that are undervalued by the model for this expiry.")
 
     except Exception as e:
         st.error(f"Error fetching option chain data: {e}")
-
