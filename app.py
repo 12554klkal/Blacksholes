@@ -183,7 +183,10 @@ with col4:
 # -------------------------
 # New Feature: Options Screener
 # -------------------------
-st.subheader("Options Screener - Find Undervalued Options")
+st.subheader("Cheapest Options Screener")
+st.sidebar.subheader("Screener Parameters")
+price_threshold = st.sidebar.number_input("Max Market Price for Screening", value=0.5, step=0.05, min_value=0.01)
+
 if input_method == "Search for a Stock" and stock_symbol:
     try:
         expiries = yf.Ticker(stock_symbol).options
@@ -197,65 +200,37 @@ if input_method == "Search for a Stock" and stock_symbol:
             calls = chain.calls
             puts = chain.puts
             
-            undervalued_options = []
+            cheapest_options = []
 
-            for _, row in calls.iterrows():
+            # Combine calls and puts for a single list
+            all_options = pd.concat([calls, puts])
+            
+            for _, row in all_options.iterrows():
                 try:
                     market_price = row.get('lastPrice', row.get('bid'))
                     if pd.isna(market_price) or market_price <= 0:
                         continue
                         
-                    strike = row['strike']
-                    
-                    # Calculate implied volatility
-                    iv = find_implied_volatility(market_price, S, strike, (pd.to_datetime(exp_date) - pd.Timestamp.now()).days / 365, r, 'call')
-                    
-                    # If IV is lower than historical vol, it's undervalued
-                    if not np.isnan(iv) and iv < sigma:
-                        undervalued_options.append({
-                            'Type': 'Call',
-                            'Strike': strike,
+                    # Filter based on the price threshold
+                    if market_price <= price_threshold:
+                        cheapest_options.append({
+                            'Type': 'Call' if row['contractSymbol'].endswith('C') else 'Put',
+                            'Strike': row['strike'],
                             'Market Price': f"${market_price:.2f}",
-                            'BS Price': f"${bs_price(S, strike, T, r, sigma, 'call'):.2f}",
-                            'Implied Vol': f"{iv:.2%}",
-                            'Historical Vol': f"{sigma:.2%}",
                             'Link': f"https://finance.yahoo.com/quote/{row['contractSymbol']}"
                         })
                 except Exception as e:
                     continue
 
-            for _, row in puts.iterrows():
-                try:
-                    market_price = row.get('lastPrice', row.get('bid'))
-                    if pd.isna(market_price) or market_price <= 0:
-                        continue
-                        
-                    strike = row['strike']
-                    
-                    iv = find_implied_volatility(market_price, S, strike, (pd.to_datetime(exp_date) - pd.Timestamp.now()).days / 365, r, 'put')
-
-                    if not np.isnan(iv) and iv < sigma:
-                        undervalued_options.append({
-                            'Type': 'Put',
-                            'Strike': strike,
-                            'Market Price': f"${market_price:.2f}",
-                            'BS Price': f"${bs_price(S, strike, T, r, sigma, 'put'):.2f}",
-                            'Implied Vol': f"{iv:.2%}",
-                            'Historical Vol': f"{sigma:.2%}",
-                            'Link': f"https://finance.yahoo.com/quote/{row['contractSymbol']}"
-                        })
-                except Exception as e:
-                    continue
-
-            if undervalued_options:
-                st.write("Potentially **Undervalued Options** (Implied Vol < Historical Vol)")
-                df_undervalued = pd.DataFrame(undervalued_options)
-                df_undervalued['Link'] = df_undervalued['Link'].apply(lambda x: f'<a href="{x}" target="_blank">View on Yahoo Finance</a>')
-                df_undervalued.sort_values(by=['Type', 'Strike'], inplace=True)
+            if cheapest_options:
+                st.write(f"The cheapest options (market price <= ${price_threshold:.2f}) for this expiry:")
+                df_cheapest = pd.DataFrame(cheapest_options)
+                df_cheapest['Link'] = df_cheapest['Link'].apply(lambda x: f'<a href="{x}" target="_blank">View on Yahoo Finance</a>')
+                df_cheapest.sort_values(by=['Type', 'Strike'], inplace=True)
                 
-                st.markdown(df_undervalued.to_html(escape=False), unsafe_allow_html=True)
+                st.markdown(df_cheapest.to_html(escape=False), unsafe_allow_html=True)
             else:
-                st.info("No options found that are undervalued by the model for this expiry.")
+                st.info(f"No options found with a market price below ${price_threshold:.2f} for this expiry.")
 
     except Exception as e:
         st.error(f"Error fetching option chain data: {e}")
