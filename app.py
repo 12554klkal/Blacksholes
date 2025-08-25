@@ -508,22 +508,68 @@ with tab2:
                 )
 
                 chain_greeks_tab = ticker.option_chain(selected_exp_date_greeks_tab)
-                all_options_greeks_tab = pd.concat([chain_greeks_tab.calls, chain_greeks_tab.puts])
                 
-                # Create display string for selectbox
-                all_options_greeks_tab['display_name'] = all_options_greeks_tab.apply(
-                    lambda row: f"{'Call' if row['contractSymbol'].endswith('C') else 'Put'} - Strike: {row['strike']:.2f} - Last Price: {row.get('lastPrice', row.get('bid')):.2f}",
-                    axis=1
-                )
+                has_calls = not chain_greeks_tab.calls.empty
+                has_puts = not chain_greeks_tab.puts.empty
+
+                selected_market_option_str = None
                 
-                selected_market_option_str = st.selectbox(
-                    "2. Select an Option from the Market Chain", 
-                    all_options_greeks_tab['display_name'].tolist(),
-                    help="Choose a specific option from the live options chain to see its Greeks."
-                )
+                if not has_calls and not has_puts:
+                    st.warning(f"No option data (calls or puts) found for {stock_symbol} on {selected_exp_date_greeks_tab}. Please select a different expiration date.")
+                elif not has_calls:
+                    st.warning(f"Only Put options available for {stock_symbol} on {selected_exp_date_greeks_tab}.")
+                    all_options_greeks_tab_filtered = chain_greeks_tab.puts
+                    all_options_greeks_tab_filtered['display_name'] = all_options_greeks_tab_filtered.apply(
+                        lambda row: f"Put - Strike: {row['strike']:.2f} - Last Price: {row.get('lastPrice', row.get('bid')):.2f}",
+                        axis=1
+                    )
+                    if not all_options_greeks_tab_filtered.empty:
+                        selected_market_option_str = st.selectbox(
+                            "2. Select a Put Option from the Market Chain", 
+                            all_options_greeks_tab_filtered['display_name'].tolist(),
+                            help="Choose a specific put option from the live options chain to see its Greeks."
+                        )
+                    else:
+                        st.info("No Put options available for selection.")
+                elif not has_puts:
+                    st.warning(f"Only Call options available for {stock_symbol} on {selected_exp_date_greeks_tab}.")
+                    all_options_greeks_tab_filtered = chain_greeks_tab.calls
+                    all_options_greeks_tab_filtered['display_name'] = all_options_greeks_tab_filtered.apply(
+                        lambda row: f"Call - Strike: {row['strike']:.2f} - Last Price: {row.get('lastPrice', row.get('bid')):.2f}",
+                        axis=1
+                    )
+                    if not all_options_greeks_tab_filtered.empty:
+                        selected_market_option_str = st.selectbox(
+                            "2. Select a Call Option from the Market Chain", 
+                            all_options_greeks_tab_filtered['display_name'].tolist(),
+                            help="Choose a specific call option from the live options chain to see its Greeks."
+                        )
+                    else:
+                        st.info("No Call options available for selection.")
+                else: # Both calls and puts are available
+                    all_options_greeks_tab = pd.concat([chain_greeks_tab.calls, chain_greeks_tab.puts])
+                    all_options_greeks_tab['display_name'] = all_options_greeks_tab.apply(
+                        lambda row: f"{'Call' if row['contractSymbol'].endswith('C') else 'Put'} - Strike: {row['strike']:.2f} - Last Price: {row.get('lastPrice', row.get('bid')):.2f}",
+                        axis=1
+                    )
+                    if not all_options_greeks_tab.empty:
+                        selected_market_option_str = st.selectbox(
+                            "2. Select an Option from the Market Chain", 
+                            all_options_greeks_tab['display_name'].tolist(),
+                            help="Choose a specific option from the live options chain to see its Greeks."
+                        )
+                    else:
+                        st.info("No options available for selection.")
+
 
                 if selected_market_option_str:
-                    selected_option_row_market = all_options_greeks_tab[all_options_greeks_tab['display_name'] == selected_market_option_str].iloc[0]
+                    # Determine which dataframe to use (filtered or combined)
+                    if not has_calls and has_puts:
+                        selected_option_row_market = all_options_greeks_tab_filtered[all_options_greeks_tab_filtered['display_name'] == selected_market_option_str].iloc[0]
+                    elif has_calls and not has_puts:
+                        selected_option_row_market = all_options_greeks_tab_filtered[all_options_greeks_tab_filtered['display_name'] == selected_market_option_str].iloc[0]
+                    else:
+                        selected_option_row_market = all_options_greeks_tab[all_options_greeks_tab['display_name'] == selected_market_option_str].iloc[0]
                     
                     market_option_type = 'call' if selected_option_row_market['contractSymbol'].endswith('C') else 'put'
                     market_strike = selected_option_row_market['strike']
@@ -750,21 +796,67 @@ with tab3:
                 )
                 chain_greeks_plot = ticker.option_chain(selected_greeks_exp_date_plot)
                 
-                all_options_greeks_plot = pd.concat([chain_greeks_plot.calls, chain_greeks_plot.puts])
-                
-                all_options_greeks_plot['display_name'] = all_options_greeks_plot.apply(
-                    lambda row: f"{'Call' if row['contractSymbol'].endswith('C') else 'Put'} - Strike: {row['strike']:.2f} - Last Price: {row.get('lastPrice', row.get('bid')):.2f}",
-                    axis=1
-                )
-                
-                selected_option_greeks_plot_str = st.selectbox(
-                    "3. Select an Option to Analyze (Greeks Plots)", 
-                    all_options_greeks_plot['display_name'].tolist(),
-                    help="Choose a specific option from the option chain to visualize how its Greek values change with the underlying stock price."
-                )
+                has_calls_plot = not chain_greeks_plot.calls.empty
+                has_puts_plot = not chain_greeks_plot.puts.empty
+
+                selected_option_greeks_plot_str = None
+
+                if not has_calls_plot and not has_puts_plot:
+                    st.warning(f"No option data (calls or puts) found for {stock_symbol} on {selected_greeks_exp_date_plot}. Please select a different expiration date.")
+                elif not has_calls_plot:
+                    st.warning(f"Only Put options available for {stock_symbol} on {selected_greeks_exp_date_plot}.")
+                    all_options_greeks_plot_filtered = chain_greeks_plot.puts
+                    all_options_greeks_plot_filtered['display_name'] = all_options_greeks_plot_filtered.apply(
+                        lambda row: f"Put - Strike: {row['strike']:.2f} - Last Price: {row.get('lastPrice', row.get('bid')):.2f}",
+                        axis=1
+                    )
+                    if not all_options_greeks_plot_filtered.empty:
+                        selected_option_greeks_plot_str = st.selectbox(
+                            "3. Select a Put Option to Analyze (Greeks Plots)", 
+                            all_options_greeks_plot_filtered['display_name'].tolist(),
+                            help="Choose a specific put option from the option chain to visualize how its Greek values change with the underlying stock price."
+                        )
+                    else:
+                        st.info("No Put options available for selection.")
+                elif not has_puts_plot:
+                    st.warning(f"Only Call options available for {stock_symbol} on {selected_greeks_exp_date_plot}.")
+                    all_options_greeks_plot_filtered = chain_greeks_plot.calls
+                    all_options_greeks_plot_filtered['display_name'] = all_options_greeks_plot_filtered.apply(
+                        lambda row: f"Call - Strike: {row['strike']:.2f} - Last Price: {row.get('lastPrice', row.get('bid')):.2f}",
+                        axis=1
+                    )
+                    if not all_options_greeks_plot_filtered.empty:
+                        selected_option_greeks_plot_str = st.selectbox(
+                            "3. Select a Call Option to Analyze (Greeks Plots)", 
+                            all_options_greeks_plot_filtered['display_name'].tolist(),
+                            help="Choose a specific call option from the option chain to visualize how its Greek values change with the underlying stock price."
+                        )
+                    else:
+                        st.info("No Call options available for selection.")
+                else: # Both calls and puts are available
+                    all_options_greeks_plot = pd.concat([chain_greeks_plot.calls, chain_greeks_plot.puts])
+                    all_options_greeks_plot['display_name'] = all_options_greeks_plot.apply(
+                        lambda row: f"{'Call' if row['contractSymbol'].endswith('C') else 'Put'} - Strike: {row['strike']:.2f} - Last Price: {row.get('lastPrice', row.get('bid')):.2f}",
+                        axis=1
+                    )
+                    if not all_options_greeks_plot.empty:
+                        selected_option_greeks_plot_str = st.selectbox(
+                            "3. Select an Option to Analyze (Greeks Plots)", 
+                            all_options_greeks_plot['display_name'].tolist(),
+                            help="Choose a specific option from the option chain to visualize how its Greek values change with the underlying stock price."
+                        )
+                    else:
+                        st.info("No options available for selection.")
+
 
                 if selected_option_greeks_plot_str:
-                    selected_option_row_greeks_plot = all_options_greeks_plot[all_options_greeks_plot['display_name'] == selected_option_greeks_plot_str].iloc[0]
+                    # Determine which dataframe to use (filtered or combined)
+                    if not has_calls_plot and has_puts_plot:
+                        selected_option_row_greeks_plot = all_options_greeks_plot_filtered[all_options_greeks_plot_filtered['display_name'] == selected_option_greeks_plot_str].iloc[0]
+                    elif has_calls_plot and not has_puts_plot:
+                        selected_option_row_greeks_plot = all_options_greeks_plot_filtered[all_options_greeks_plot_filtered['display_name'] == selected_option_greeks_plot_str].iloc[0]
+                    else:
+                        selected_option_row_greeks_plot = all_options_greeks_plot[all_options_greeks_plot['display_name'] == selected_option_greeks_plot_str].iloc[0]
                     
                     greeks_plot_option_type = 'call' if selected_option_row_greeks_plot['contractSymbol'].endswith('C') else 'put'
                     greeks_plot_strike = selected_option_row_greeks_plot['strike']
