@@ -448,7 +448,7 @@ with tab1:
 
 with tab2:
     st.header("Option Greeks Analysis")
-    st.markdown("Here you can analyze the sensitivity of the currently selected option to various market factors. These values are based on the **Spot Price**, **Strike Price**, **Time to Maturity**, **Risk-Free Rate**, and **Volatility** set in the sidebar.")
+    st.markdown("Here you can analyze the sensitivity of a **specific option from the market** to various factors. First, select an expiration date, then choose an option to view its Greeks.")
 
     st.markdown("""
         <style>
@@ -497,96 +497,149 @@ with tab2:
     * **Neutral:** The value's interpretation depends heavily on your specific strategy and market outlook.
     """)
 
-    if S is not None and K is not None and T > 0 and r is not None and sigma is not None:
-        st.subheader("Option Greeks") # Removed detailed parameters from title
-        
-        # --- Delta ---
-        option_delta = delta(S, K, T, r, sigma, selected_option_type)
-        box_class = "neutral-box-v2"
-        explanation_text = ""
-        if not np.isnan(option_delta):
-            if selected_option_type == "call":
-                box_class = "green-box-v2" if option_delta > 0 else "red-box-v2"
-                explanation_text = f"Your Call option's price is expected to change by ${abs(option_delta):.2f} for a $1 move in the stock. A positive Delta means it generally gains as the stock price rises."
-            else: # put
-                box_class = "green-box-v2" if option_delta < 0 else "red-box-v2"
-                explanation_text = f"Your Put option's price is expected to change by ${abs(option_delta):.2f} for a $1 move in the stock. A negative Delta means it generally gains as the stock price falls."
-        
-        st.markdown(f"""
-        <div class="metric-box-v2 {box_class}">
-            <div class="metric-title-v2">Delta (Δ)</div>
-            <div class="metric-value-v2">{option_delta:.3f}</div>
-            <div class="metric-explanation-v2">
-                Measures how much the option price is expected to change for every $1 change in the underlying stock's price.<br>
-                {explanation_text}
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # --- Gamma ---
-        option_gamma = gamma(S, K, T, r, sigma)
-        st.markdown(f"""
-        <div class="metric-box-v2 neutral-box-v2">
-            <div class="metric-title-v2">Gamma (Γ)</div>
-            <div class="metric-value-v2">{option_gamma:.3f}</div>
-            <div class="metric-explanation-v2">
-                Measures the rate of change of Delta. A high Gamma means your Delta (and thus your option's sensitivity) will change rapidly with small movements in the stock price.
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+    if input_method == "Search for a Stock" and stock_symbol and S is not None:
+        try:
+            expiries_greeks_tab = ticker.options
+            if expiries_greeks_tab:
+                selected_exp_date_greeks_tab = st.selectbox(
+                    "1. Select Expiration Date for Greeks", 
+                    expiries_greeks_tab, 
+                    help="Choose the expiration date of the option you want to analyze."
+                )
 
-        # --- Theta ---
-        option_theta = theta(S, K, T, r, sigma, selected_option_type)
-        box_class = "red-box-v2" if (not np.isnan(option_theta) and T > 0) else "neutral-box-v2" # Time decay is a cost for long options
-        
-        st.markdown(f"""
-        <div class="metric-box-v2 {box_class}">
-            <div class="metric-title-v2">Theta (Θ)</div>
-            <div class="metric-value-v2">{option_theta:.3f} (per year)</div>
-            <div class="metric-explanation-v2">
-                Represents time decay. The option price is expected to decrease by ${abs(option_theta / 365):.3f} per day due to the passage of time.
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # --- Vega ---
-        option_vega = vega(S, K, T, r, sigma)
-        box_class = "green-box-v2" if (not np.isnan(option_vega) and option_vega > 0) else "red-box-v2" if (not np.isnan(option_vega) and option_vega < 0) else "neutral-box-v2" # Long options benefit from rising vol
-        
-        st.markdown(f"""
-        <div class="metric-box-v2 {box_class}">
-            <div class="metric-title-v2">Vega (ν)</div>
-            <div class="metric-value-v2">{option_vega:.3f}</div>
-            <div class="metric-explanation-v2">
-                Measures the option's sensitivity to a 1% (0.01) change in implied volatility. A 1% rise in volatility would change the option price by ${option_vega / 100:.2f}.
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-            
-        # --- Rho ---
-        option_rho = rho(S, K, T, r, sigma, selected_option_type)
-        box_class = "neutral-box-v2"
-        explanation_text = ""
-        if not np.isnan(option_rho):
-            if selected_option_type == "call":
-                box_class = "green-box-v2" if option_rho > 0 else "red-box-v2"
-                explanation_text = "Call options generally benefit from higher interest rates."
-            else: # put
-                box_class = "green-box-v2" if option_rho < 0 else "red-box-v2"
-                explanation_text = "Put options generally suffer from higher interest rates."
-        
-        st.markdown(f"""
-        <div class="metric-box-v2 {box_class}">
-            <div class="metric-title-v2">Rho (ρ)</div>
-            <div class="metric-value-v2">{option_rho:.3f}</div>
-            <div class="metric-explanation-v2">
-                Measures the option's sensitivity to a 1% (0.01) change in the risk-free interest rate. A 1% rise in interest rates would change the option price by ${option_rho / 100:.2f}.<br>
-                {explanation_text}
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+                chain_greeks_tab = ticker.option_chain(selected_exp_date_greeks_tab)
+                all_options_greeks_tab = pd.concat([chain_greeks_tab.calls, chain_greeks_tab.puts])
+                
+                # Create display string for selectbox
+                all_options_greeks_tab['display_name'] = all_options_greeks_tab.apply(
+                    lambda row: f"{'Call' if row['contractSymbol'].endswith('C') else 'Put'} - Strike: {row['strike']:.2f} - Last Price: {row.get('lastPrice', row.get('bid')):.2f}",
+                    axis=1
+                )
+                
+                selected_market_option_str = st.selectbox(
+                    "2. Select an Option from the Market Chain", 
+                    all_options_greeks_tab['display_name'].tolist(),
+                    help="Choose a specific option from the live options chain to see its Greeks."
+                )
+
+                if selected_market_option_str:
+                    selected_option_row_market = all_options_greeks_tab[all_options_greeks_tab['display_name'] == selected_market_option_str].iloc[0]
+                    
+                    market_option_type = 'call' if selected_option_row_market['contractSymbol'].endswith('C') else 'put'
+                    market_strike = selected_option_row_market['strike']
+                    market_price = selected_option_row_market.get('lastPrice', selected_option_row_market.get('bid'))
+
+                    days_to_expiry_market = (pd.to_datetime(selected_exp_date_greeks_tab) - pd.Timestamp.now()).days
+                    T_market = days_to_expiry_market / 365.0 if days_to_expiry_market > 0 else 0.01
+
+                    # Try to calculate implied volatility from market price
+                    iv_for_greeks = find_implied_volatility(market_price, S, market_strike, T_market, r, market_option_type)
+                    
+                    # Use implied volatility if valid, otherwise fall back to sidebar sigma
+                    current_sigma_for_greeks = iv_for_greeks if not np.isnan(iv_for_greeks) and iv_for_greeks > 0 else sigma
+                    if np.isnan(iv_for_greeks) or iv_for_greeks <= 0:
+                        st.warning(f"Could not calculate Implied Volatility for selected option (Market Price: ${market_price:.2f}, Strike: ${market_strike:.2f}). Using sidebar Volatility (σ={sigma:.2%}) for Greeks calculation.")
+
+                    st.subheader(f"Greeks for Selected {market_option_type.upper()} Option (Strike: ${market_strike:.2f})")
+                    if not np.isnan(iv_for_greeks) and iv_for_greeks > 0:
+                         st.markdown(f"**Implied Volatility (IV):** {current_sigma_for_greeks:.2%}")
+                    else:
+                         st.markdown(f"**Used Volatility:** {current_sigma_for_greeks:.2%} (sidebar input)")
+
+
+                    # --- Delta ---
+                    option_delta = delta(S, market_strike, T_market, r, current_sigma_for_greeks, market_option_type)
+                    box_class = "neutral-box-v2"
+                    explanation_text = ""
+                    if not np.isnan(option_delta):
+                        if market_option_type == "call":
+                            box_class = "green-box-v2" if option_delta > 0 else "red-box-v2"
+                            explanation_text = f"Your Call option's price is expected to change by ${abs(option_delta):.2f} for a $1 move in the stock. A positive Delta means it generally gains as the stock price rises."
+                        else: # put
+                            box_class = "green-box-v2" if option_delta < 0 else "red-box-v2"
+                            explanation_text = f"Your Put option's price is expected to change by ${abs(option_delta):.2f} for a $1 move in the stock. A negative Delta means it generally gains as the stock price falls."
+                    
+                    st.markdown(f"""
+                    <div class="metric-box-v2 {box_class}">
+                        <div class="metric-title-v2">Delta (Δ)</div>
+                        <div class="metric-value-v2">{option_delta:.3f}</div>
+                        <div class="metric-explanation-v2">
+                            Measures how much the option price is expected to change for every $1 change in the underlying stock's price.<br>
+                            {explanation_text}
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # --- Gamma ---
+                    option_gamma = gamma(S, market_strike, T_market, r, current_sigma_for_greeks)
+                    st.markdown(f"""
+                    <div class="metric-box-v2 neutral-box-v2">
+                        <div class="metric-title-v2">Gamma (Γ)</div>
+                        <div class="metric-value-v2">{option_gamma:.3f}</div>
+                        <div class="metric-explanation-v2">
+                            Measures the rate of change of Delta. A high Gamma means your Delta (and thus your option's sensitivity) will change rapidly with small movements in the stock price.
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    # --- Theta ---
+                    option_theta = theta(S, market_strike, T_market, r, current_sigma_for_greeks, market_option_type)
+                    box_class = "red-box-v2" if (not np.isnan(option_theta) and T_market > 0) else "neutral-box-v2" # Time decay is a cost for long options
+                    
+                    st.markdown(f"""
+                    <div class="metric-box-v2 {box_class}">
+                        <div class="metric-title-v2">Theta (Θ)</div>
+                        <div class="metric-value-v2">{option_theta:.3f} (per year)</div>
+                        <div class="metric-explanation-v2">
+                            Represents time decay. The option price is expected to decrease by ${abs(option_theta / 365):.3f} per day due to the passage of time.
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # --- Vega ---
+                    option_vega = vega(S, market_strike, T_market, r, current_sigma_for_greeks)
+                    box_class = "green-box-v2" if (not np.isnan(option_vega) and option_vega > 0) else "red-box-v2" if (not np.isnan(option_vega) and option_vega < 0) else "neutral-box-v2" # Long options benefit from rising vol
+                    
+                    st.markdown(f"""
+                    <div class="metric-box-v2 {box_class}">
+                        <div class="metric-title-v2">Vega (ν)</div>
+                        <div class="metric-value-v2">{option_vega:.3f}</div>
+                        <div class="metric-explanation-v2">
+                            Measures the option's sensitivity to a 1% (0.01) change in implied volatility. A 1% rise in volatility would change the option price by ${option_vega / 100:.2f}.
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                        
+                    # --- Rho ---
+                    option_rho = rho(S, market_strike, T_market, r, current_sigma_for_greeks, market_option_type)
+                    box_class = "neutral-box-v2"
+                    explanation_text = ""
+                    if not np.isnan(option_rho):
+                        if market_option_type == "call":
+                            box_class = "green-box-v2" if option_rho > 0 else "red-box-v2"
+                            explanation_text = "Call options generally benefit from higher interest rates."
+                        else: # put
+                            box_class = "green-box-v2" if option_rho < 0 else "red-box-v2"
+                            explanation_text = "Put options generally suffer from higher interest rates."
+                    
+                    st.markdown(f"""
+                    <div class="metric-box-v2 {box_class}">
+                        <div class="metric-title-v2">Rho (ρ)</div>
+                        <div class="metric-value-v2">{option_rho:.3f}</div>
+                        <div class="metric-explanation-v2">
+                            Measures the option's sensitivity to a 1% (0.01) change in the risk-free interest rate. A 1% rise in interest rates would change the option price by ${option_rho / 100:.2f}.<br>
+                            {explanation_text}
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    st.info("Please select an option from the market chain to view its Greeks.")
+            else:
+                st.info("No option chain data available for this stock. Please search for a stock on the 'Black-Scholes Calculator' tab.")
+        except Exception as e:
+            st.error(f"Error fetching market option data or calculating Greeks: {e}")
     else:
-        st.info("Please ensure all 'Asset Parameters' and 'Option Parameters' are set correctly on the 'Black-Scholes Calculator' tab to view Greeks.")
+        st.info("Please search for a stock on the 'Black-Scholes Calculator' tab to view Greeks Analysis.")
 
 
 with tab3:
@@ -688,36 +741,44 @@ with tab3:
 
     if input_method == "Search for a Stock" and stock_symbol and S is not None:
         try:
-            expiries_pnl = ticker.options
-            if expiries_pnl:
-                selected_greeks_exp_date = st.selectbox(
+            expiries_greeks_plot = ticker.options
+            if expiries_greeks_plot:
+                selected_greeks_exp_date_plot = st.selectbox(
                     "2. Select Expiration Date for Greeks Plots", 
-                    expiries_pnl, 
+                    expiries_greeks_plot, 
                     help="Choose the expiration date for analyzing how Greeks change with stock price."
                 )
-                chain_greeks = ticker.option_chain(selected_greeks_exp_date)
+                chain_greeks_plot = ticker.option_chain(selected_greeks_exp_date_plot)
                 
-                all_options_greeks = pd.concat([chain_greeks.calls, chain_greeks.puts])
+                all_options_greeks_plot = pd.concat([chain_greeks_plot.calls, chain_greeks_plot.puts])
                 
-                all_options_greeks['display_name'] = all_options_greeks.apply(
+                all_options_greeks_plot['display_name'] = all_options_greeks_plot.apply(
                     lambda row: f"{'Call' if row['contractSymbol'].endswith('C') else 'Put'} - Strike: {row['strike']:.2f} - Last Price: {row.get('lastPrice', row.get('bid')):.2f}",
                     axis=1
                 )
                 
-                selected_option_greeks_str = st.selectbox(
+                selected_option_greeks_plot_str = st.selectbox(
                     "3. Select an Option to Analyze (Greeks Plots)", 
-                    all_options_greeks['display_name'].tolist(),
+                    all_options_greeks_plot['display_name'].tolist(),
                     help="Choose a specific option from the option chain to visualize how its Greek values change with the underlying stock price."
                 )
 
-                if selected_option_greeks_str:
-                    selected_option_row_greeks = all_options_greeks[all_options_greeks['display_name'] == selected_option_greeks_str].iloc[0]
+                if selected_option_greeks_plot_str:
+                    selected_option_row_greeks_plot = all_options_greeks_plot[all_options_greeks_plot['display_name'] == selected_option_greeks_plot_str].iloc[0]
                     
-                    greeks_option_type = 'call' if selected_option_row_greeks['contractSymbol'].endswith('C') else 'put'
-                    greeks_strike = selected_option_row_greeks['strike']
+                    greeks_plot_option_type = 'call' if selected_option_row_greeks_plot['contractSymbol'].endswith('C') else 'put'
+                    greeks_plot_strike = selected_option_row_greeks_plot['strike']
+                    greeks_plot_market_price = selected_option_row_greeks_plot.get('lastPrice', selected_option_row_greeks_plot.get('bid'))
 
-                    days_to_expiry_greeks = (pd.to_datetime(selected_greeks_exp_date) - pd.Timestamp.now()).days
-                    T_greeks = days_to_expiry_greeks / 365.0 if days_to_expiry_greeks > 0 else 0.01
+                    days_to_expiry_greeks_plot = (pd.to_datetime(selected_greeks_exp_date_plot) - pd.Timestamp.now()).days
+                    T_greeks_plot = days_to_expiry_greeks_plot / 365.0 if days_to_expiry_greeks_plot > 0 else 0.01
+
+                    # Try to calculate implied volatility from market price for plots
+                    iv_for_greeks_plot = find_implied_volatility(greeks_plot_market_price, S, greeks_plot_strike, T_greeks_plot, r, greeks_plot_option_type)
+                    current_sigma_for_greeks_plot = iv_for_greeks_plot if not np.isnan(iv_for_greeks_plot) and iv_for_greeks_plot > 0 else sigma
+                    if np.isnan(iv_for_greeks_plot) or iv_for_greeks_plot <= 0:
+                        st.warning(f"Could not calculate Implied Volatility for selected option's Greeks plot (Market Price: ${greeks_plot_market_price:.2f}, Strike: ${greeks_plot_strike:.2f}). Using sidebar Volatility (σ={sigma:.2%}).")
+
 
                     if S is not None and S > 0:
                         greeks_spot_range = np.linspace(max(1, S - 0.2 * S), S + 0.2 * S, 50) 
@@ -725,11 +786,11 @@ with tab3:
                         greeks_spot_range = np.linspace(50, 150, 50) 
                         st.warning("Current stock price (S) is not available or invalid; using default range for Greeks plots.")
                     
-                    if T_greeks > 0 and sigma > 0:
-                        deltas = [delta(s_val, greeks_strike, T_greeks, r, sigma, greeks_option_type) for s_val in greeks_spot_range]
-                        gammas = [gamma(s_val, greeks_strike, T_greeks, r, sigma) for s_val in greeks_spot_range]
-                        thetas = [theta(s_val, greeks_strike, T_greeks, r, sigma, greeks_option_type) for s_val in greeks_spot_range]
-                        vegas = [vega(s_val, greeks_strike, T_greeks, r, sigma) for s_val in greeks_spot_range]
+                    if T_greeks_plot > 0 and current_sigma_for_greeks_plot > 0:
+                        deltas = [delta(s_val, greeks_plot_strike, T_greeks_plot, r, current_sigma_for_greeks_plot, greeks_plot_option_type) for s_val in greeks_spot_range]
+                        gammas = [gamma(s_val, greeks_plot_strike, T_greeks_plot, r, current_sigma_for_greeks_plot) for s_val in greeks_spot_range]
+                        thetas = [theta(s_val, greeks_plot_strike, T_greeks_plot, r, current_sigma_for_greeks_plot, greeks_plot_option_type) for s_val in greeks_spot_range]
+                        vegas = [vega(s_val, greeks_plot_strike, T_greeks_plot, r, current_sigma_for_greeks_plot) for s_val in greeks_spot_range]
 
                         fig_greeks = go.Figure()
                         fig_greeks.add_trace(go.Scatter(x=greeks_spot_range, y=deltas, mode='lines', name='Delta'))
@@ -738,7 +799,7 @@ with tab3:
                         fig_greeks.add_trace(go.Scatter(x=greeks_spot_range, y=vegas, mode='lines', name='Vega'))
 
                         fig_greeks.update_layout(
-                            title=f"Option Greeks vs. Stock Price for Selected {greeks_option_type.upper()} Option",
+                            title=f"Option Greeks vs. Stock Price for Selected {greeks_plot_option_type.upper()} Option",
                             xaxis_title="Stock Price",
                             yaxis_title="Greek Value",
                             hovermode="x unified",
@@ -832,7 +893,7 @@ with tab4:
         st.markdown(r"""
         **Time to Maturity (T)**, also known as time to expiration, is the remaining time until an option contract expires. It is usually expressed in **years** in option pricing models.
         
-        Importance: Time is a decaying asset for options. The longer the time to maturity, the more extrinsic value an option usually has (due to more time for the stock price to move), but this value erodes as time passes (Theta decay).
+        Importance: Time is a decaying asset for options. The longer the time to maturity, the more extrinsic value an option usually has (due to more time for the stock price to move), but this value eradicates as time passes (Theta decay).
         """)
 
     with st.expander("Risk-Free Interest Rate (r)"):
