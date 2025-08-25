@@ -113,25 +113,6 @@ def rho(S, K, T, r, sigma, option_type="call"):
     else:
         return -K * T * exp(-r * T) * norm.cdf(-d2_val)
 
-# Function to calculate historical volatility
-def calculate_historical_volatility(stock_symbol):
-    """Calculates annualized historical volatility from yfinance data."""
-    try:
-        data = yf.download(stock_symbol, period="1y", interval="1d", progress=False)
-        # Ensure sufficient data for calculation
-        if len(data) < 2:
-            st.warning(f"Not enough historical data for {stock_symbol} to calculate volatility.")
-            return None
-        returns = np.log(data['Adj Close'] / data['Adj Close'].shift(1)).dropna()
-        if len(returns) == 0:
-            st.warning(f"No valid returns data for {stock_symbol} to calculate volatility.")
-            return None
-        volatility = returns.std() * np.sqrt(252) # Annualize by sqrt(252 trading days)
-        return volatility
-    except Exception as e:
-        st.error(f"Error calculating historical volatility for {stock_symbol}: {e}")
-        return None
-
 # -------------------------
 # Streamlit Layout
 # -------------------------
@@ -144,6 +125,8 @@ st.sidebar.markdown(
     "[📎 LinkedIn](https://www.linkedin.com/in/jonas-f-628179296/)",
     unsafe_allow_html=True
 )
+
+st.sidebar.markdown("---") # Separator
 
 st.sidebar.header("Asset Parameters")
 
@@ -166,15 +149,10 @@ if input_method == "Search for a Stock":
             else:
                 st.sidebar.markdown(f"**Current Price:** ${S:.2f}")
 
-            # Calculate historical volatility
-            sigma = calculate_historical_volatility(stock_symbol)
-            if sigma is not None:
-                st.sidebar.markdown(f"**Historical Volatility:** {sigma:.2%}")
-            else:
-                st.sidebar.warning("Could not calculate historical volatility via yfinance. Please enter manually.")
-                sigma = st.sidebar.number_input("Manual Volatility (σ)", value=0.2, step=0.01, min_value=0.01)
-
-            # Link to external volatility search
+            # Manual Volatility Input (Historical volatility calculation removed)
+            sigma = st.sidebar.number_input("Volatility (σ)", value=0.2, step=0.01, min_value=0.01, help="Annualized historical volatility. You can find this on financial websites.")
+            
+            # Link to external volatility search (always present when stock is searched)
             volatility_link = f"https://www.alphaquery.com/stock/{stock_symbol}/volatility-option-statistics/30-day/historical-volatility"
             st.sidebar.markdown(f"[📊 Search for Historic Volatility]({volatility_link})")
 
@@ -188,6 +166,8 @@ if input_method == "Search for a Stock":
 else:  # "Enter Manually"
     S = st.sidebar.number_input("Current Asset Price", value=100.0, step=1.0)
     sigma = st.sidebar.number_input("Volatility (σ)", value=0.2, step=0.01, min_value=0.01)
+
+st.sidebar.markdown("---") # Separator
 
 st.sidebar.header("Option Parameters")
 
@@ -276,7 +256,9 @@ else: # "Enter Manually"
     K = st.sidebar.number_input("Manual Strike Price", value=100.0, step=1.0)
     selected_option_type = st.sidebar.radio("Option Type", ["call", "put"], horizontal=True)
 
+st.sidebar.markdown("---") # Separator
 
+st.sidebar.header("Time & Rate Parameters")
 T = st.sidebar.number_input("Time to Maturity (Years)", value=1.0, step=0.1, min_value=0.01)
 r = st.sidebar.number_input("Risk-Free Interest Rate", value=0.05, step=0.01)
 
@@ -469,7 +451,7 @@ with tab2:
     st.markdown("Here you can analyze the sensitivity of the currently selected option to various market factors. These values are based on the **Spot Price**, **Strike Price**, **Time to Maturity**, **Risk-Free Rate**, and **Volatility** set in the sidebar.")
 
     if S is not None and K is not None and T > 0 and r is not None and sigma is not None:
-        st.subheader(f"Greeks for {selected_option_type.upper()} Option (S=${S:.2f}, K=${K:.2f}, T={T:.2f}yr, r={r:.2%}, σ={sigma:.2%})")
+        st.subheader("Option Greeks") # Removed detailed parameters from title
         
         # Custom CSS for the colored boxes
         st.markdown("""
@@ -512,97 +494,92 @@ with tab2:
             </style>
         """, unsafe_allow_html=True)
 
-        col_delta, col_gamma, col_theta, col_vega, col_rho = st.columns(5)
+        # Removed st.columns to make them stack vertically
         
         # --- Delta ---
-        with col_delta:
-            option_delta = delta(S, K, T, r, sigma, selected_option_type)
-            box_class = "neutral-box-v2"
-            interpretation_text = ""
-            if not np.isnan(option_delta):
-                if selected_option_type == "call":
-                    box_class = "green-box-v2" if option_delta > 0 else "red-box-v2"
-                    interpretation_text = f"Your Call option's price is expected to change by ${abs(option_delta):.2f} for a $1 move in the stock. A positive Delta means it generally gains as the stock price rises."
-                else: # put
-                    box_class = "green-box-v2" if option_delta < 0 else "red-box-v2"
-                    interpretation_text = f"Your Put option's price is expected to change by ${abs(option_delta):.2f} for a $1 move in the stock. A negative Delta means it generally gains as the stock price falls."
-            
-            st.markdown(f"""
-            <div class="metric-box-v2 {box_class}">
-                <div class="metric-title-v2">Delta (Δ)</div>
-                <div class="metric-value-v2">{option_delta:.3f}</div>
-                <div class="metric-interpretation-v2">
-                    **Meaning:** Measures how much the option price is expected to change for every $1 change in the underlying stock's price.<br>
-                    {interpretation_text}
-                </div>
+        option_delta = delta(S, K, T, r, sigma, selected_option_type)
+        box_class = "neutral-box-v2"
+        interpretation_text = ""
+        if not np.isnan(option_delta):
+            if selected_option_type == "call":
+                box_class = "green-box-v2" if option_delta > 0 else "red-box-v2"
+                interpretation_text = f"Your Call option's price is expected to change by ${abs(option_delta):.2f} for a $1 move in the stock. A positive Delta means it generally gains as the stock price rises."
+            else: # put
+                box_class = "green-box-v2" if option_delta < 0 else "red-box-v2"
+                interpretation_text = f"Your Put option's price is expected to change by ${abs(option_delta):.2f} for a $1 move in the stock. A negative Delta means it generally gains as the stock price falls."
+        
+        st.markdown(f"""
+        <div class="metric-box-v2 {box_class}">
+            <div class="metric-title-v2">Delta (Δ)</div>
+            <div class="metric-value-v2">{option_delta:.3f}</div>
+            <div class="metric-interpretation-v2">
+                **Meaning:** Measures how much the option price is expected to change for every $1 change in the underlying stock's price.<br>
+                {interpretation_text}
             </div>
-            """, unsafe_allow_html=True)
+        </div>
+        """, unsafe_allow_html=True)
         
         # --- Gamma ---
-        with col_gamma:
-            option_gamma = gamma(S, K, T, r, sigma)
-            st.markdown(f"""
-            <div class="metric-box-v2 neutral-box-v2">
-                <div class="metric-title-v2">Gamma (Γ)</div>
-                <div class="metric-value-v2">{option_gamma:.3f}</div>
-                <div class="metric-interpretation-v2">
-                    **Meaning:** Measures the rate of change of Delta. A high Gamma means your Delta (and thus your option's sensitivity) will change rapidly with small movements in the stock price.
-                </div>
+        option_gamma = gamma(S, K, T, r, sigma)
+        st.markdown(f"""
+        <div class="metric-box-v2 neutral-box-v2">
+            <div class="metric-title-v2">Gamma (Γ)</div>
+            <div class="metric-value-v2">{option_gamma:.3f}</div>
+            <div class="metric-interpretation-v2">
+                **Meaning:** Measures the rate of change of Delta. A high Gamma means your Delta (and thus your option's sensitivity) will change rapidly with small movements in the stock price.
             </div>
-            """, unsafe_allow_html=True)
+        </div>
+        """, unsafe_allow_html=True)
 
         # --- Theta ---
-        with col_theta:
-            option_theta = theta(S, K, T, r, sigma, selected_option_type)
-            box_class = "red-box-v2" if not np.isnan(option_theta) else "neutral-box-v2" # Time decay is a cost for long options
-            
-            st.markdown(f"""
-            <div class="metric-box-v2 {box_class}">
-                <div class="metric-title-v2">Theta (Θ)</div>
-                <div class="metric-value-v2">{option_theta:.3f} (per year)</div>
-                <div class="metric-interpretation-v2">
-                    **Meaning:** Represents time decay. The option price is expected to decrease by ${abs(option_theta / 365):.3f} per day due to the passage of time.
-                </div>
+        option_theta = theta(S, K, T, r, sigma, selected_option_type)
+        box_class = "red-box-v2" if not np.isnan(option_theta) else "neutral-box-v2" # Time decay is a cost for long options
+        
+        st.markdown(f"""
+        <div class="metric-box-v2 {box_class}">
+            <div class="metric-title-v2">Theta (Θ)</div>
+            <div class="metric-value-v2">{option_theta:.3f} (per year)</div>
+            <div class="metric-interpretation-v2">
+                **Meaning:** Represents time decay. The option price is expected to decrease by ${abs(option_theta / 365):.3f} per day due to the passage of time.
             </div>
-            """, unsafe_allow_html=True)
+        </div>
+        """, unsafe_allow_html=True)
         
         # --- Vega ---
-        with col_vega:
-            option_vega = vega(S, K, T, r, sigma)
-            box_class = "green-box-v2" if (not np.isnan(option_vega) and option_vega > 0) else "red-box-v2" if (not np.isnan(option_vega) and option_vega < 0) else "neutral-box-v2" # Long options benefit from rising vol
-            
-            st.markdown(f"""
-            <div class="metric-box-v2 {box_class}">
-                <div class="metric-title-v2">Vega (ν)</div>
-                <div class="metric-value-v2">{option_vega:.3f}</div>
-                <div class="metric-interpretation-v2">
-                    **Meaning:** Measures the option's sensitivity to a 1% (0.01) change in **implied volatility**. A 1% rise in volatility would change the option price by ${option_vega / 100:.2f}.
-                </div>
+        option_vega = vega(S, K, T, r, sigma)
+        box_class = "green-box-v2" if (not np.isnan(option_vega) and option_vega > 0) else "red-box-v2" if (not np.isnan(option_vega) and option_vega < 0) else "neutral-box-v2" # Long options benefit from rising vol
+        
+        st.markdown(f"""
+        <div class="metric-box-v2 {box_class}">
+            <div class="metric-title-v2">Vega (ν)</div>
+            <div class="metric-value-v2">{option_vega:.3f}</div>
+            <div class="metric-interpretation-v2">
+                **Meaning:** Measures the option's sensitivity to a 1% (0.01) change in **implied volatility**. A 1% rise in volatility would change the option price by ${option_vega / 100:.2f}.
             </div>
-            """, unsafe_allow_html=True)
+        </div>
+        """, unsafe_allow_html=True)
             
         # --- Rho ---
-        with col_rho:
-            option_rho = rho(S, K, T, r, sigma, selected_option_type)
-            box_class = "neutral-box-v2"
-            if not np.isnan(option_rho):
-                if selected_option_type == "call":
-                    box_class = "green-box-v2" if option_rho > 0 else "red-box-v2"
-                    interpretation_text = "Call options generally benefit from higher interest rates."
-                else: # put
-                    box_class = "green-box-v2" if option_rho < 0 else "red-box-v2"
-                    interpretation_text = "Put options generally suffer from higher interest rates."
-            
-            st.markdown(f"""
-            <div class="metric-box-v2 {box_class}">
-                <div class="metric-title-v2">Rho (ρ)</div>
-                <div class="metric-value-v2">{option_rho:.3f}</div>
-                <div class="metric-interpretation-v2">
-                    **Meaning:** Measures the option's sensitivity to a 1% (0.01) change in the **risk-free interest rate**. A 1% rise in interest rates would change the option price by ${option_rho / 100:.2f}.<br>
-                    {interpretation_text}
-                </div>
+        option_rho = rho(S, K, T, r, sigma, selected_option_type)
+        box_class = "neutral-box-v2"
+        if not np.isnan(option_rho):
+            if selected_option_type == "call":
+                box_class = "green-box-v2" if option_rho > 0 else "red-box-v2"
+                interpretation_text = "Call options generally benefit from higher interest rates."
+            else: # put
+                box_class = "green-box-v2" if option_rho < 0 else "red-box-v2"
+                interpretation_text = "Put options generally suffer from higher interest rates."
+        
+        st.markdown(f"""
+        <div class="metric-box-v2 {box_class}">
+            <div class="metric-title-v2">Rho (ρ)</div>
+            <div class="metric-value-v2">{option_rho:.3f}</div>
+            <div class="metric-interpretation-v2">
+                **Meaning:** Measures the option's sensitivity to a 1% (0.01) change in the **risk-free interest rate**. A 1% rise in interest rates would change the option price by ${option_rho / 100:.2f}.<br>
+                {interpretation_text}
             </div>
-            """, unsafe_allow_html=True)
+        </div>
+        """, unsafe_allow_html=True)
     else:
         st.info("Please ensure all 'Asset Parameters' and 'Option Parameters' are set correctly on the 'Black-Scholes Calculator' tab to view Greeks.")
 
@@ -701,18 +678,18 @@ with tab3:
         st.info("Please search for a stock on the 'Black-Scholes Calculator' tab to view Volatility Smile.")
 
     st.markdown("---")
-    st.subheader("Interactive P&L (Profit & Loss) Chart & Greeks Plots")
-    st.write("Here you can analyze the potential **Profit/Loss (P&L)** of a selected option at expiration, and see how its **Greeks** change with different stock prices.")
-    st.info("**For Beginners:** The P&L chart shows how much money you could gain or lose with your option, depending on the stock price at expiration. The Greeks plots show how sensitive your option's value is to changes in the stock price.")
+    st.subheader("Interactive P&L (Profit & Loss) Chart") # Removed Greeks Plots from subheader
+    st.write("Here you can analyze the potential **Profit/Loss (P&L)** of a selected option at expiration.")
+    st.info("**For Beginners:** The P&L chart shows how much money you could gain or lose with your option, depending on the stock price at expiration.")
 
     if input_method == "Search for a Stock" and stock_symbol and S is not None:
         try:
             expiries_pnl = ticker.options
             if expiries_pnl:
                 selected_pnl_exp_date = st.selectbox(
-                    "2. Select Expiration Date for P&L and Greeks Plots", 
+                    "2. Select Expiration Date for P&L Chart", # Removed Greeks Plots from label
                     expiries_pnl, 
-                    help="Choose the expiration date for analyzing the profit/loss profile and sensitivity of an option."
+                    help="Choose the expiration date for analyzing the profit/loss profile of an option."
                 )
                 chain_pnl = ticker.option_chain(selected_pnl_exp_date)
                 
@@ -726,9 +703,9 @@ with tab3:
                 )
                 
                 selected_option_pnl_str = st.selectbox(
-                    "3. Select an Option to Analyze (P&L and Greeks Plots)", 
+                    "3. Select an Option to Analyze (P&L Chart)", # Removed Greeks Plots from label
                     all_options_pnl['display_name'].tolist(),
-                    help="Choose a specific option from the option chain to visualize its profit/loss potential and Greek values."
+                    help="Choose a specific option from the option chain to visualize its profit/loss potential."
                 )
 
                 if selected_option_pnl_str:
@@ -773,50 +750,14 @@ with tab3:
                     )
                     st.plotly_chart(fig_pnl, use_container_width=True)
 
-                    st.markdown("---")
-                    st.subheader("Greeks Plots vs. Stock Price")
-                    st.write("These charts show how the option's Greek values (Delta, Gamma, Theta, Vega) change as the stock price fluctuates, keeping other parameters constant. This helps you understand your option's sensitivity under different market conditions.")
-
-                    # --- Greeks Plots Calculation ---
-                    # Ensure S is valid before using it for range calculation
-                    if S is not None and S > 0:
-                        greeks_spot_range = np.linspace(max(1, S - 0.2 * S), S + 0.2 * S, 50) # Smaller range for Greeks sensitivity, +/- 20%
-                    else:
-                        greeks_spot_range = np.linspace(50, 150, 50) # Fallback range
-                        st.warning("Current stock price (S) is not available or invalid; using default range for Greeks plots.")
-                    
-                    # Ensure T_pnl and sigma are valid for greek calculations
-                    if T_pnl > 0 and sigma > 0:
-                        deltas = [delta(s_val, pnl_strike, T_pnl, r, sigma, pnl_option_type) for s_val in greeks_spot_range]
-                        gammas = [gamma(s_val, pnl_strike, T_pnl, r, sigma) for s_val in greeks_spot_range]
-                        thetas = [theta(s_val, pnl_strike, T_pnl, r, sigma, pnl_option_type) for s_val in greeks_spot_range]
-                        vegas = [vega(s_val, pnl_strike, T_pnl, r, sigma) for s_val in greeks_spot_range]
-
-                        fig_greeks = go.Figure()
-                        fig_greeks.add_trace(go.Scatter(x=greeks_spot_range, y=deltas, mode='lines', name='Delta'))
-                        fig_greeks.add_trace(go.Scatter(x=greeks_spot_range, y=gammas, mode='lines', name='Gamma'))
-                        fig_greeks.add_trace(go.Scatter(x=greeks_spot_range, y=thetas, mode='lines', name='Theta (Ann.)'))
-                        fig_greeks.add_trace(go.Scatter(x=greeks_spot_range, y=vegas, mode='lines', name='Vega'))
-
-                        fig_greeks.update_layout(
-                            title=f"Option Greeks vs. Stock Price for Selected {pnl_option_type.upper()} Option",
-                            xaxis_title="Stock Price",
-                            yaxis_title="Greek Value",
-                            hovermode="x unified",
-                            height=600
-                        )
-                        st.plotly_chart(fig_greeks, use_container_width=True)
-                    else:
-                        st.warning("Cannot calculate Greeks plots: Time to Maturity or Volatility is zero.")
-
                 else:
-                    st.info("Please select an option to view P&L and Greeks plots.")
+                    st.info("Please select an option to view P&L chart.")
             else:
-                st.info("No option chain data available for P&L and Greeks plots.")
+                st.info("No option chain data available for P&L chart.")
         except Exception as e:
-            st.error(f"Error generating P&L chart or Greeks plots: {e}")
+            st.error(f"Error generating P&L chart: {e}")
     else:
-        st.info("Please search for a stock on the 'Black-Scholes Calculator' tab to view P&L and Greeks Analysis.")
+        st.info("Please search for a stock on the 'Black-Scholes Calculator' tab to view P&L Analysis.")
 
 with tab4:
     st.header("Financial Terms Explained")
